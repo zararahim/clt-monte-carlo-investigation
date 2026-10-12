@@ -1,0 +1,235 @@
+---
+title: "Cauchy"
+subtitle: "The sample mean stays Cauchy at every sample size"
+format:
+  html:
+    embed-resources: true
+    toc: true
+    code-fold: true
+    theme: cosmo
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+```{r}
+#| include: false
+library(ggplot2)
+library(knitr)
+student_id <- 1069
+```
+
+The last required population I looked at is the Cauchy distribution, with location 0 and scale 1. In the middle it looks a bit like a normal curve, but the tails are much heavier. The mean and the variance are infinite, so there is no $\sigma/\sqrt{n}$ for me to compare with. The observations are still independent, and they still come from the same distribution. The assumption that fails is finite variance.
+
+If I average $n$ independent Cauchy observations, the average is Cauchy again, with the same location and the same scale. That is true for every sample size. A larger sample does not pull this sampling distribution toward a normal curve, and it does not make it narrower.
+
+## The population
+
+One draw from this population is a Cauchy number with location 0 and scale 1. The curve is centered at 0. Its interquartile range is 2. About 6.3% of draws fall outside $-10$ to $10$, because $1 - 2\arctan(10)/\pi$ is about 0.063. The curve below is the population itself, not a sampling distribution.
+
+```{r}
+#| echo: false
+#| fig-width: 6.5
+#| fig-height: 3.2
+#| fig-cap: "The Cauchy population with location 0 and scale 1, drawn from -10 to 10. The tails continue past this window."
+curve_x <- seq(-10, 10, length.out = 400)
+ggplot(data.frame(x = curve_x, y = dcauchy(curve_x)), aes(x, y)) +
+  geom_line(linewidth = 0.9, color = "#08519c") +
+  labs(x = "Observation", y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+The histogram below is the individual draws that landed inside $-10$ to $10$, so these are single observations. The share that fell outside the window is part of the population, and averaging later does not remove those tails.
+
+```{r}
+#| echo: false
+#| fig-width: 6.5
+#| fig-height: 3.2
+#| fig-cap: "Individual Cauchy draws inside -10 to 10. The red curve is the Cauchy density. Draws outside the window are omitted from the bars and counted in the sentence below."
+set.seed(student_id)
+individuals <- rcauchy(10000)
+outside_share <- mean(abs(individuals) > 10)
+ggplot(data.frame(x = individuals[abs(individuals) <= 10]), aes(x)) +
+  geom_histogram(
+    aes(y = after_stat(count / 10000 / 0.5)),
+    binwidth = 0.5,
+    fill = "#9ecae1",
+    linewidth = 0
+  ) +
+  stat_function(fun = dcauchy, color = "#e31a1c", linewidth = 0.8) +
+  labs(x = "Individual value", y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+`r round(100 * outside_share, 1)`% of the 10,000 individual draws fell outside $-10$ to $10$. That is the heavy tail. The population stays this way for the rest of the file.
+
+It is easy to mix up the population, one sample, and the sampling distribution. The population is every individual value, which is what the pictures above show. A sample is one batch of those values, and the sampling distribution is the collection of sample means I get only after I repeat that sample many times. The Central Limit Theorem is about that last distribution, and for the Cauchy that distribution has the same shape as the population.
+
+Below I printed one sample of five Cauchy draws, and then their average. One large draw can move that average a long way. The average is still one number from one sample, and the sampling distribution is the pile of averages I get later, when I repeat the sample 10,000 times.
+
+```{r}
+set.seed(student_id)
+one_sample <- rcauchy(5)
+round(one_sample, 3)
+mean(one_sample)
+```
+
+## What I expected
+
+Before looking at the simulation, the prediction was:
+
+- The histograms of the sample means should look like the population, at sample size 5 and at sample size 100. There is no sample size at which this mean becomes normal.
+- The median of the 10,000 sample means should stay near 0. The interquartile range should stay near 2.
+- The ordinary mean and the ordinary standard deviation should jump from row to row. They should not shrink like $1/\sqrt{n}$, because that formula needs a finite $\sigma$.
+- About 6% of the sample means should have absolute value greater than 10, at every sample size. That is the same share as for one Cauchy draw.
+- No row should meet the rule used for the other populations. That rule asks for a standard error within 10% of $\sigma/\sqrt{n}$, and $\sigma$ is not a real number here.
+
+Sample sizes 6 and 7 are not a place to search. The exact result says the mean is Cauchy at sample size 1 and at sample size 100. The useful check is a small size, sample size 30, and a large size.
+
+## How the experiment was run
+
+The sample size, $n$, is how many observations are averaged to make one sample mean. The number of repetitions, $B = 10000$, is how many of those means were saved. The sample size is never 10,000.
+
+The sample sizes are 5, 10, 20, 30, 40, 50, 60, 70, 80, and 100. They match the other reports, including sizes past 30. If the Cauchy were only slow, the large sizes would start to look better. The exact result says they will not. There is no gap to fill in, because there is no crossing to find.
+
+Skewness and kurtosis are not in the table. Those summaries need a finite variance. For a Cauchy sample they wander with the most extreme draw, so they are not evidence about shape. The summaries that match this distribution are the median, the interquartile range, and the share of means outside $-10$ to $10$.
+
+The random seed is the last four digits of the student ID, set once, immediately before the draws.
+
+```{r}
+student_id <- 1069
+B <- 10000
+sample_sizes <- c(5, 10, 20, 30, 40, 50, 60, 70, 80, 100)
+
+set.seed(student_id)
+
+results <- data.frame()
+focus_n <- c(5, 30, 100)
+stored_means <- list()
+
+for (n in sample_sizes) {
+  sample_means <- replicate(B, mean(rcauchy(n)))
+  results <- rbind(
+    results,
+    data.frame(
+      sample_size = n,
+      simulated_mean = mean(sample_means),
+      simulated_median = median(sample_means),
+      simulated_sd = sd(sample_means),
+      iqr = IQR(sample_means),
+      share_abs_gt_10 = mean(abs(sample_means) > 10)
+    )
+  )
+  if (n %in% focus_n) {
+    stored_means[[as.character(n)]] <- sample_means
+  }
+}
+```
+
+## What the numbers say
+
+```{r}
+#| echo: false
+results_view <- results
+names(results_view) <- c(
+  "Sample size", "Simulated mean", "Simulated median",
+  "SD of the means", "IQR of the means",
+  "Share with |mean| > 10"
+)
+kable(
+  results_view,
+  digits = 3,
+  row.names = FALSE,
+  caption = "Ten thousand Cauchy sample means. The standard deviation and the ordinary mean are unstable. The median, the interquartile range, and the share of extreme means are the summaries that match a Cauchy distribution."
+)
+```
+
+The median stays near 0. It runs from `r round(min(results$simulated_median), 3)` to `r round(max(results$simulated_median), 3)`. The interquartile range stays near 2. It runs from `r round(min(results$iqr), 3)` to `r round(max(results$iqr), 3)`. The share of means with absolute value greater than 10 runs from `r round(min(results$share_abs_gt_10), 3)` to `r round(max(results$share_abs_gt_10), 3)`, against the theoretical share of about 0.063 for one Cauchy draw.
+
+The ordinary mean does not sit still. At sample size 5 it is `r round(results$simulated_mean[results$sample_size == 5], 2)`. At sample size 50 it is `r round(results$simulated_mean[results$sample_size == 50], 2)`. At sample size 100 it is `r round(results$simulated_mean[results$sample_size == 100], 1)`. A larger sample size did not pull the average of the means toward 0.
+
+The standard deviation of the means does not shrink like $1/\sqrt{n}$. At sample size 5 it is `r round(results$simulated_sd[results$sample_size == 5], 1)`. At sample size 30 it is `r round(results$simulated_sd[results$sample_size == 30], 1)`. At sample size 100 it is `r formatC(results$simulated_sd[results$sample_size == 100], format = "f", digits = 0)`. The largest sample size has the largest standard deviation in the table. There is no theoretical standard error to put beside these numbers.
+
+## What the pictures say
+
+The histograms use the sample means that fell inside $-10$ to $10$. The red curve is the Cauchy density, the same curve as the population. It is not a normal curve. Each panel is on the same horizontal scale. Sample sizes 5, 30, and 100 are the small end, the rule of thumb, and the large end.
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.3
+#| fig-cap: "Cauchy sample means inside -10 to 10. The red curve is the Cauchy density. The same share of means falls outside this window at every sample size."
+plot_means <- do.call(rbind, lapply(focus_n, function(n) {
+  x <- stored_means[[as.character(n)]]
+  data.frame(n = n, sample_mean = x[abs(x) <= 10])
+}))
+plot_means$panel <- factor(
+  paste0("n = ", plot_means$n),
+  levels = paste0("n = ", focus_n)
+)
+curve_df <- data.frame(
+  x = seq(-10, 10, length.out = 400),
+  y = dcauchy(seq(-10, 10, length.out = 400))
+)
+
+ggplot(plot_means, aes(sample_mean)) +
+  geom_histogram(
+    aes(y = after_stat(count / B / 0.5)),
+    binwidth = 0.5,
+    fill = "#9ecae1",
+    linewidth = 0
+  ) +
+  geom_line(
+    data = curve_df,
+    aes(x, y),
+    color = "#e31a1c",
+    linewidth = 0.8,
+    inherit.aes = FALSE
+  ) +
+  facet_wrap(~panel, nrow = 1) +
+  labs(x = "Sample mean", y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+The three panels match the same red curve. Sample size 30 is not narrower than sample size 5. Sample size 100 is not narrower than sample size 30. The center stays at 0. The width does not follow $1/\sqrt{n}$. The population did not change, and the sampling distribution did not change either.
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.4
+#| fig-cap: "Normal Q–Q plots of the Cauchy means. A few extreme means stretch the vertical axis. The red line is qqline()."
+par(mfrow = c(1, 3), mar = c(4, 4, 2.2, 1))
+for (n in focus_n) {
+  qqnorm(
+    stored_means[[as.character(n)]],
+    main = paste0("n = ", n),
+    pch = 16,
+    cex = 0.3,
+    col = "#08519c"
+  )
+  qqline(stored_means[[as.character(n)]], col = "#e31a1c", lwd = 2)
+}
+```
+
+The Q–Q plots do not straighten as the sample size grows. The normal reference line misses the points at sample size 5, at sample size 30, and at sample size 100, because a few enormous means pull the line around.
+
+A Shapiro–Wilk test is not used. The test accepts at most 5,000 values and assumes a finite variance. These means do not have one. The histogram and the Q–Q plot already show the tails.
+
+## Conclusion
+
+n = no finite sample size found
+
+The ordinary Central Limit Theorem does not apply, because the Cauchy population has no finite mean or variance. Increasing the sample size did not produce a stable, approximately normal sampling distribution. The sample mean stays Cauchy-shaped, and extreme values stay influential.
+
+No sample size in this table is approximately normal. Sample size 30 is not a special point: the interquartile range is `r round(results$iqr[results$sample_size == 30], 3)`, the median is `r round(results$simulated_median[results$sample_size == 30], 3)`, and `r round(100 * results$share_abs_gt_10[results$sample_size == 30], 1)`% of the means fall outside $-10$ to $10$. Sample size 100 has the same kind of interquartile range, `r round(results$iqr[results$sample_size == 100], 3)`, and a standard deviation of `r formatC(results$simulated_sd[results$sample_size == 100], format = "f", digits = 0)`. Adding observations did not repair the infinite variance.
+
+The usual standard-error formula does not apply. There is no $\sigma$ to divide by $\sqrt{n}$. The ordinary standard deviation of the simulated means is not a substitute for that formula. It records the largest accidents in the sample.
+
+The population did not become normal, and the sampling distribution of the mean did not become normal either. One Cauchy draw and the average of 100 Cauchy draws have the same distribution. That is the case the Central Limit Theorem does not cover. The only seed in this file is the student ID.
+
+**For the Cauchy population, there is no sample size that makes the sample mean approximately normal. Even with \(n=100\), extreme values remain influential because the Cauchy distribution has no finite mean or variance, so the Central Limit Theorem does not apply.**
+
+## What surprised me
+
+The standard deviation of the sample means is largest at the largest sample size. It is `r round(results$simulated_sd[results$sample_size == 5], 1)` at sample size 5 and `r formatC(results$simulated_sd[results$sample_size == 100], format = "f", digits = 0)` at sample size 100. Read as a standard error, that looks like the mean getting less precise as $n$ grows. It is one extreme mean, not a trend. The interquartile range at those two sizes is `r round(results$iqr[results$sample_size == 5], 3)` and `r round(results$iqr[results$sample_size == 100], 3)`. The summary that matches the Cauchy distribution refuses to shrink. The summary that needs a finite variance is the one that jumps.

@@ -1,0 +1,350 @@
+---
+title: "Exponential"
+subtitle: "Right-skewed, so the mean is slow to look normal"
+format:
+  html:
+    embed-resources: true
+    toc: true
+    code-fold: true
+    theme: cosmo
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+```{r}
+#| include: false
+library(ggplot2)
+library(knitr)
+student_id <- 1069
+```
+
+For the next distribution, I looked at the exponential distribution with rate 1. Most of the values are small, and a few are much larger, so the population leans hard to the right. The sample mean of exponential observations follows a gamma distribution, so it is always a little right-skewed; never exactly normal. I wanted the smallest sample size where that leftover skew is small enough to count as normal.
+
+## The population
+
+One draw from this population is an exponential waiting time with rate 1. The mean is 1 and the standard deviation is 1. The skewness is 2. The excess kurtosis is 6. The curve below is the population itself, not a sampling distribution.
+
+```{r}
+#| echo: false
+#| fig-width: 6.5
+#| fig-height: 3.2
+#| fig-cap: "The exponential population with rate 1. Mean 1, standard deviation 1, with a long right tail."
+curve_x <- seq(0, 8, length.out = 400)
+ggplot(data.frame(x = curve_x, y = dexp(curve_x, rate = 1)), aes(x, y)) +
+  geom_line(linewidth = 0.9, color = "#08519c") +
+  labs(x = "Observation", y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+The histogram below is 10,000 individual draws from that same population, so these are single observations. The right tail belongs to the population, and averaging later does not make the individual values normal.
+
+```{r}
+#| echo: false
+#| fig-width: 6.5
+#| fig-height: 3.2
+#| fig-cap: "Ten thousand individual exponential draws. This is the population, not a sampling distribution."
+set.seed(student_id)
+individuals <- rexp(10000, rate = 1)
+ggplot(data.frame(x = individuals), aes(x)) +
+  geom_histogram(
+    aes(y = after_stat(density)),
+    bins = 40,
+    fill = "#9ecae1",
+    color = "white"
+  ) +
+  stat_function(fun = dexp, args = list(rate = 1), color = "#e31a1c", linewidth = 0.8) +
+  coord_cartesian(xlim = c(0, 8)) +
+  labs(x = "Individual value", y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+It is easy to mix up the population, one sample, and the sampling distribution. The population is every individual waiting time, which is what the pictures above show. A sample is one batch of those values, and the sampling distribution is the collection of sample means I get only after I repeat that sample many times. The Central Limit Theorem is about that last distribution. The exponential population stays right-skewed.
+
+Below I printed one sample of five exponential draws, and then their average. That average is one number from one sample. The sampling distribution is the pile of averages I get later, when I repeat the sample 10,000 times.
+
+```{r}
+set.seed(student_id)
+one_sample <- rexp(5, rate = 1)
+round(one_sample, 3)
+mean(one_sample)
+```
+
+The sample mean of $n$ independent exponential observations has mean 1 and standard error $1/\sqrt{n}$. Its skewness is $2/\sqrt{n}$. That number shrinks as $n$ grows, but it is never 0.
+
+## What I expected
+
+Before looking at the simulation, the prediction was:
+
+- The simulated mean should stay near 1, and the standard-error ratio should sit near 1 even at sample size 5. The variance is finite.
+- The shape should still be right-skewed at sample size 30. There, $2/\sqrt{30}$ is about 0.37, which is past the 0.25 skewness cutoff.
+- The cutoff $2/\sqrt{n} < 0.25$ is the same as $n > 64$. On this grid, 60 should fail and 70 should be the first size that can pass.
+- Sample sizes 1 through 4 should fail too. They are not on the grid, because the change to look for is between 60 and 70, not below 5.
+- The histograms at sample size 5 and sample size 30 should show a longer right tail than the normal curve. Sample size 70 should be the first picture that is close.
+
+A pass at sample size 30 would mean the cutoff was too loose for this population. A pass at sample size 100 with nothing in between would not show where the change happened.
+
+## How the experiment was run
+
+The sample size, $n$, is how many observations are averaged to make one sample mean. The number of repetitions, $B = 10000$, is how many of those means were saved. The sample size is never 10,000.
+
+The sample sizes are 5, 10, 20, 30, 40, 50, 60, 70, 80, and 100. Sample size 30 is the rule of thumb this project is testing. Sizes 60, 70, and 80 are the search around the predicted change. A grid that jumped from 50 to 100 would make 100 look like the answer only because nothing in between had been tried.
+
+A sample size counts as normal enough when four things are all true: the absolute skewness of the 10,000 sample means is under 0.25, the theoretical skewness $2/\sqrt{n}$ is also under 0.25, the absolute excess kurtosis is under 0.50, and the simulated standard error is within 10% of $1/\sqrt{n}$. The theoretical skewness is included because this population lands close to the cutoff. One noisy run should not pass while the formula is still over 0.25.
+
+The random seed is the last four digits of the student ID, set once, immediately before the draws.
+
+```{r}
+student_id <- 1069
+B <- 10000
+sample_sizes <- c(5, 10, 20, 30, 40, 50, 60, 70, 80, 100)
+mu <- 1
+sigma <- 1
+
+skewness <- function(x) {
+  z <- (x - mean(x)) / sd(x)
+  mean(z^3)
+}
+
+excess_kurtosis <- function(x) {
+  z <- (x - mean(x)) / sd(x)
+  mean(z^4) - 3
+}
+
+set.seed(student_id)
+
+results <- data.frame()
+focus_n <- c(5, 30, 70)
+stored_means <- list()
+
+for (n in sample_sizes) {
+  sample_means <- replicate(B, mean(rexp(n, rate = 1)))
+  simulated_se <- sd(sample_means)
+  theoretical_se <- sigma / sqrt(n)
+
+  results <- rbind(
+    results,
+    data.frame(
+      sample_size = n,
+      simulated_mean = mean(sample_means),
+      theoretical_mean = mu,
+      simulated_se = simulated_se,
+      theoretical_se = theoretical_se,
+      se_ratio = simulated_se / theoretical_se,
+      skewness = skewness(sample_means),
+      theory_skewness = 2 / sqrt(n),
+      excess_kurtosis = excess_kurtosis(sample_means)
+    )
+  )
+
+  if (n %in% focus_n) {
+    stored_means[[as.character(n)]] <- sample_means
+  }
+}
+
+results$meets_rule <- with(
+  results,
+  abs(skewness) < 0.25 &
+    abs(theory_skewness) < 0.25 &
+    abs(excess_kurtosis) < 0.50 &
+    abs(se_ratio - 1) <= 0.10
+)
+```
+
+## What the numbers say
+
+```{r}
+#| echo: false
+results_view <- results
+names(results_view) <- c(
+  "Sample size", "Simulated mean", "Theoretical mean",
+  "Simulated SE", "Theoretical SE", "SE ratio",
+  "Skewness", "Theory skewness", "Excess kurtosis",
+  "Meets the rule?"
+)
+results_view$`Meets the rule?` <- ifelse(results$meets_rule, "Yes", "No")
+kable(
+  results_view,
+  digits = 3,
+  row.names = FALSE,
+  caption = "Ten thousand sample means from an exponential population. The theoretical mean is 1. The theoretical standard error is 1 divided by the square root of n. The theoretical skewness is 2 divided by the square root of n."
+)
+```
+
+The center matches 1 at every row. The simulated means run from `r round(min(results$simulated_mean), 3)` to `r round(max(results$simulated_mean), 3)`.
+
+The width matches the formula immediately. At sample size 5 the simulated standard error is `r round(results$simulated_se[results$sample_size == 5], 3)` and the theoretical value is `r round(results$theoretical_se[results$sample_size == 5], 3)`, a ratio of `r round(results$se_ratio[results$sample_size == 5], 3)`. At sample size 30 the ratio is `r round(results$se_ratio[results$sample_size == 30], 3)`. Across the whole table the ratio stays between `r round(min(results$se_ratio), 3)` and `r round(max(results$se_ratio), 3)`. A correct standard error is not evidence that the shape is normal.
+
+Skewness is the column that makes the decision. At sample size 5 it is `r round(results$skewness[results$sample_size == 5], 3)`, against a theoretical value of `r round(results$theory_skewness[results$sample_size == 5], 3)`. At sample size 30 it is `r round(results$skewness[results$sample_size == 30], 3)`, against `r round(results$theory_skewness[results$sample_size == 30], 3)`. Both are past 0.25. At sample size 60 the simulated skewness is `r round(results$skewness[results$sample_size == 60], 3)` and the formula is `r round(results$theory_skewness[results$sample_size == 60], 3)`, so that row still fails. At sample size 70 the simulated skewness is `r round(results$skewness[results$sample_size == 70], 3)` and the formula is `r round(results$theory_skewness[results$sample_size == 70], 3)`. That is the first row in which both are under 0.25.
+
+Excess kurtosis is not what holds the decision. The population excess kurtosis is 6, and for the mean it shrinks like $6/n$. It is already under 0.50 by sample size 20, where the simulated value is `r round(results$excess_kurtosis[results$sample_size == 20], 3)`. The right skew is what lasts.
+
+## What the pictures say
+
+The histograms below are the sampling distribution of the mean at sample sizes 5, 30, and 70. The red curve is the normal approximation $N(1, 1/\sqrt{n})$, not a curve fitted to the bars. Each panel has its own horizontal scale, and the axis starts at 0 because an average of exponential values cannot be negative.
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.3
+#| fig-cap: "Sampling distribution of the exponential mean. The red curve is the normal approximation. The right tail is what the cutoff is measuring."
+plot_means <- do.call(rbind, lapply(focus_n, function(n) {
+  data.frame(n = n, sample_mean = stored_means[[as.character(n)]])
+}))
+plot_means$panel <- factor(
+  paste0("n = ", plot_means$n),
+  levels = paste0("n = ", focus_n)
+)
+
+curve_df <- do.call(rbind, lapply(focus_n, function(n) {
+  se <- sigma / sqrt(n)
+  lower <- max(0, mu - 4 * se)
+  upper <- max(mu + 4 * se, max(stored_means[[as.character(n)]]))
+  xs <- seq(lower, upper, length.out = 300)
+  data.frame(
+    panel = factor(paste0("n = ", n), levels = levels(plot_means$panel)),
+    x = xs,
+    y = dnorm(xs, mean = mu, sd = se)
+  )
+}))
+
+ggplot(plot_means, aes(sample_mean)) +
+  geom_histogram(
+    aes(y = after_stat(density)),
+    bins = 40,
+    fill = "#9ecae1",
+    linewidth = 0
+  ) +
+  geom_line(data = curve_df, aes(x, y), color = "#e31a1c", linewidth = 0.8) +
+  facet_wrap(~panel, nrow = 1, scales = "free") +
+  labs(x = "Sample mean", y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+At sample size 5 the bars have a long right tail and the red curve does not fit them. At sample size 30 the tail is shorter and still longer than the normal curve. At sample size 70 the bars sit much closer to the curve. Because each panel is scaled to its own data, this picture is about shape. The next figure puts the same three sampling distributions on one horizontal scale, from 0 to 4, so the change in width is visible too.
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.3
+#| fig-cap: "The same exponential means on one horizontal scale, from 0 to 4. Larger samples pull the mean in toward 1. The population stays right-skewed."
+ggplot(plot_means, aes(sample_mean)) +
+  geom_histogram(
+    aes(y = after_stat(density)),
+    bins = 40,
+    fill = "#9ecae1",
+    linewidth = 0
+  ) +
+  geom_line(data = curve_df, aes(x, y), color = "#e31a1c", linewidth = 0.8) +
+  facet_wrap(~panel, nrow = 1, scales = "free_y") +
+  coord_cartesian(xlim = c(0, 4)) +
+  labs(x = "Sample mean", y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+On that shared scale, sample size 5 is spread out, with a tail toward 3 and 4. Sample size 30 is narrower and still not symmetric. Sample size 70 is a tight pile at 1. The center stays at 1. The population of individual draws did not get narrower or symmetric. The sampling distribution did.
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.4
+#| fig-cap: "Normal Q–Q plots of the exponential means. A bend at the right is the remaining skew. The red line is qqline()."
+par(mfrow = c(1, 3), mar = c(4, 4, 2.2, 1))
+for (n in focus_n) {
+  qqnorm(
+    stored_means[[as.character(n)]],
+    main = paste0("n = ", n),
+    pch = 16,
+    cex = 0.3,
+    col = "#08519c"
+  )
+  qqline(stored_means[[as.character(n)]], col = "#e31a1c", lwd = 2)
+}
+```
+
+The Q–Q plot at sample size 5 bends up at the right end. At sample size 30 the bend is smaller, and at sample size 70 it is smaller again, so the bend shrinks along with the skewness. `qqline()` absorbs the scale, which means these plots do not show the standard error falling from `r round(results$simulated_se[results$sample_size == 5], 3)` to `r round(results$simulated_se[results$sample_size == 70], 3)`. That shrinking is in the shared-scale histogram and in the table. I treated the Q–Q plot as supporting evidence, not as a separate cutoff.
+
+A Shapiro–Wilk test is a fifth check. The null hypothesis is that the means are normal. The test accepts at most 5,000 values, so each row uses a random 5,000 of the 10,000 means. That subsample is drawn after the experiment, with the same student seed, so the table of means does not change.
+
+```{r}
+#| results: hide
+shapiro_results <- do.call(rbind, lapply(focus_n, function(n) {
+  set.seed(student_id)
+  fit <- shapiro.test(sample(stored_means[[as.character(n)]], 5000))
+  data.frame(
+    sample_size = n,
+    W = unname(fit$statistic),
+    p_value = fit$p.value
+  )
+}))
+```
+
+```{r}
+#| echo: false
+shapiro_view <- shapiro_results
+shapiro_view$p_value <- format.pval(shapiro_results$p_value, digits = 3, eps = 0.001)
+names(shapiro_view) <- c("Sample size", "W", "p-value")
+kable(
+  shapiro_view,
+  digits = 3,
+  row.names = FALSE,
+  caption = "Shapiro–Wilk tests on 5,000 of the 10,000 exponential means. A small p-value is evidence against a normal curve."
+)
+```
+
+W moves toward 1, from `r round(shapiro_results$W[shapiro_results$sample_size == 5], 3)` at sample size 5 to `r round(shapiro_results$W[shapiro_results$sample_size == 70], 3)` at sample size 70. The p-values are `r format.pval(shapiro_results$p_value[shapiro_results$sample_size == 5], digits = 3, eps = 0.001)`, `r format.pval(shapiro_results$p_value[shapiro_results$sample_size == 30], digits = 3, eps = 0.001)`, and `r format.pval(shapiro_results$p_value[shapiro_results$sample_size == 70], digits = 3, eps = 0.001)`. They stay small. At sample size 70 the numeric rule has already passed, and this test still detects the remaining right tail. With 5,000 observations it is sensitive enough to reject a distribution that the 0.25 cutoff accepts. The rule in this file stays the skewness, the excess kurtosis, and the standard-error check.
+
+## Conclusion
+
+The numeric rule first holds at sample size 70, so sample size 30 is not enough. At n = 30 the skewness is `r round(results$skewness[results$sample_size == 30], 3)`, the theoretical skewness is `r round(results$theory_skewness[results$sample_size == 30], 3)`, and the standard-error ratio is `r round(results$se_ratio[results$sample_size == 30], 3)`. The width is already right, and the shape is still skewed.
+
+Sample size 60 is the last failure: simulated skewness `r round(results$skewness[results$sample_size == 60], 3)`, theoretical skewness `r round(results$theory_skewness[results$sample_size == 60], 3)`. Sample size 70 is the first pass: simulated skewness `r round(results$skewness[results$sample_size == 70], 3)`, theoretical skewness `r round(results$theory_skewness[results$sample_size == 70], 3)`, excess kurtosis `r round(results$excess_kurtosis[results$sample_size == 70], 3)`, standard-error ratio `r round(results$se_ratio[results$sample_size == 70], 3)`. The margin is thin. Both numbers sit just under 0.25. Every larger size on the grid meets the rule as well.
+
+The exponential population did not become normal. An individual draw is still right-skewed with a long tail. The sampling distribution changed because each mean mixes more observations, so the rare large values get diluted. That is what the Central Limit Theorem claims here, and it is slow. Thirty is enough for the standard error. It is not enough for the shape.
+
+**For exponential data, the averages do not look normal at \(n=30\) because the population is strongly right-skewed. They first meet my numerical rule at \(n=70\), so I would use \(n=70\) as the smallest sample size where the averages are approximately normal.**
+
+## A stricter skewness cutoff
+
+The 0.25 cutoff is a judgment call. The original rule stays in place. This check asks what happens if the skewness cutoff is 0.20 instead, for both the simulated skewness and the formula $2/\sqrt{n}$. The excess-kurtosis cutoff and the standard-error check stay as they were. No new draws are used. The same 10,000 means are scored again.
+
+```{r}
+#| echo: false
+tighter <- results
+tighter$meets_tighter <- with(
+  results,
+  abs(skewness) < 0.20 &
+    abs(theory_skewness) < 0.20 &
+    abs(excess_kurtosis) < 0.50 &
+    abs(se_ratio - 1) <= 0.10
+)
+tighter_view <- data.frame(
+  sample_size = tighter$sample_size,
+  theory_skewness = tighter$theory_skewness,
+  under_025 = ifelse(abs(tighter$theory_skewness) < 0.25, "Yes", "No"),
+  under_020 = ifelse(abs(tighter$theory_skewness) < 0.20, "Yes", "No"),
+  skewness = tighter$skewness,
+  original = ifelse(tighter$meets_rule, "Yes", "No"),
+  stricter = ifelse(tighter$meets_tighter, "Yes", "No")
+)
+names(tighter_view) <- c(
+  "Sample size", "Theory skewness", "Formula under 0.25",
+  "Formula under 0.20", "Simulated skewness",
+  "Original rule", "Cutoff 0.20"
+)
+kable(
+  tighter_view,
+  digits = 3,
+  row.names = FALSE,
+  caption = "The same exponential means scored with a skewness cutoff of 0.20. The original rule is unchanged."
+)
+```
+
+The formula $2/\sqrt{n}$ equals 0.25 at sample size 64 and equals 0.20 at sample size 100. On this grid the formula is still `r round(results$theory_skewness[results$sample_size == 100], 3)` at sample size 100, so it is not under 0.20. `r if (any(tighter$meets_tighter)) paste0("The stricter rule first holds at sample size ", min(tighter$sample_size[tighter$meets_tighter]), ".") else "No sample size on this grid meets the stricter rule."` The original selected sample size stays 70. Moving the cutoff from 0.25 to 0.20 moves the theoretical crossing from 65 to past 100, which this grid does not reach. The conclusion depends on the cutoff. It does not depend on it inside the narrow band between 60 and 70: sample size 60 fails 0.25, and sample size 70 would also fail 0.20, because the formula there is `r round(results$theory_skewness[results$sample_size == 70], 3)`.
+
+## What surprised me
+
+I expected the standard error and the shape to become acceptable together, and they do not. At sample size 30 the standard-error ratio is `r round(results$se_ratio[results$sample_size == 30], 3)` and the skewness is still `r round(results$skewness[results$sample_size == 30], 3)`. Thirty answers the question about the width, and it leaves the question about the shape open.
+
+The simulated skewness also does not fall in a smooth line. From sample size 30 to sample size 50 it stays near `r round(results$skewness[results$sample_size == 30], 3)`, `r round(results$skewness[results$sample_size == 40], 3)`, and `r round(results$skewness[results$sample_size == 50], 3)`, while the formula falls from `r round(results$theory_skewness[results$sample_size == 30], 3)` to `r round(results$theory_skewness[results$sample_size == 50], 3)`. At sample size 100 the simulated skewness is `r round(results$skewness[results$sample_size == 100], 3)`, a bit higher than `r round(results$skewness[results$sample_size == 80], 3)` at sample size 80. That is the noise in a skewness estimate from `r B` means, not the tail growing back. Both of those rows are under the cutoff. The formula keeps falling, from `r round(results$theory_skewness[results$sample_size == 80], 3)` to `r round(results$theory_skewness[results$sample_size == 100], 3)`.

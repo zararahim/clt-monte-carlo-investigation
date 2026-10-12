@@ -1,0 +1,320 @@
+---
+title: "Binomial"
+subtitle: "Five trials per observation, not five observations"
+format:
+  html:
+    embed-resources: true
+    toc: true
+    code-fold: true
+    theme: cosmo
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+```{r}
+#| include: false
+library(ggplot2)
+library(knitr)
+student_id <- 1069
+```
+
+Next, I looked at a binomial count. Each observation is one count from 5 trials, and the chance of success on a trial is 0.10. The 5 is easy to misread, because it is the number of trials inside one observation, while the sample size, $n$, is how many of those counts I average.
+
+Most of the counts are 0 or 1, so the population is right-skewed, and it only takes whole-number values. The sample mean can only land on multiples of $1/n$. I wanted the smallest $n$ where that average is close enough to normal to defend.
+
+## The population
+
+One count has mean $5 \times 0.10 = 0.5$ and variance $5 \times 0.10 \times 0.90 = 0.45$, so the standard deviation is $\sqrt{0.45}$, about 0.671. The skewness is $(1 - 2 \times 0.10) / \sqrt{0.45}$, about 1.193. The excess kurtosis is about 1.02. The bars below are the population itself, not a sampling distribution.
+
+```{r}
+#| echo: false
+#| fig-width: 6.5
+#| fig-height: 3.2
+#| fig-cap: "One binomial count with 5 trials and success probability 0.10. Most of the probability is on 0 and 1."
+ggplot(data.frame(count = 0:5, probability = dbinom(0:5, size = 5, prob = 0.10)), aes(count, probability)) +
+  geom_col(width = 0.7, fill = "#08519c") +
+  scale_x_continuous(breaks = 0:5) +
+  labs(x = "Count", y = "Probability") +
+  theme_minimal(base_size = 12)
+```
+
+The histogram below is 10,000 individual counts, so these are single observations. Averaging later does not turn this population into a normal curve.
+
+```{r}
+#| echo: false
+#| fig-width: 6.5
+#| fig-height: 3.2
+#| fig-cap: "Ten thousand individual binomial counts. This is the population, not a sampling distribution."
+set.seed(student_id)
+individuals <- rbinom(10000, size = 5, prob = 0.10)
+ggplot(data.frame(count = individuals), aes(count)) +
+  geom_bar(aes(y = after_stat(count / sum(count))), width = 0.7, fill = "#08519c") +
+  scale_x_continuous(breaks = 0:5) +
+  labs(x = "Count", y = "Proportion") +
+  theme_minimal(base_size = 12)
+```
+
+It is easy to mix up the population, one sample, and the sampling distribution. The population is one count, which is what the pictures above show. A sample is one batch of those counts, and the sampling distribution is the collection of averages I get only after I repeat that sample many times. The Central Limit Theorem is about that last distribution. A single count stays a number from 0 to 5.
+
+Below I printed one sample of five counts, and then their average. That average is one number from one sample. The sampling distribution is the pile of averages I get later, when I repeat the sample 10,000 times.
+
+```{r}
+set.seed(student_id)
+one_sample <- rbinom(5, size = 5, prob = 0.10)
+one_sample
+mean(one_sample)
+```
+
+The sample mean of $n$ independent counts has mean 0.5 and standard error $0.671/\sqrt{n}$. Its skewness is about $1.193/\sqrt{n}$.
+
+## What I expected
+
+Before looking at the simulation, the prediction was:
+
+- The simulated mean should stay near 0.5, and the standard-error ratio should sit near 1 even at sample size 5. The variance is finite.
+- The skewness of the mean should be about $1.193/\sqrt{n}$. That drops under 0.25 when $n > (1.193/0.25)^2$, which is about 22.8. So sample size 22 should fail the formula, and sample size 23 should be the first size the formula allows.
+- A simulated skewness under 0.25 at sample size 20 or 22 should not count if the formula is still over 0.25. One noisy run can dip under the line.
+- Near 23 the formula is only barely under 0.25, and a skewness estimate from 10,000 means wobbles by about 0.025. The first Yes may not be a size that stays Yes.
+- The histogram should stay a row of separate bars. The possible means are multiples of $1/n$.
+
+Sample sizes 6 and 7 are not the place to look. At those sizes the formula is still about 0.49 and 0.45. The change to investigate is between 20 and 30.
+
+## How the experiment was run
+
+The sample size, $n$, is how many counts are averaged to make one sample mean. The number of repetitions, $B = 10000$, is how many of those means were saved. The sample size is never 10,000, and it is never the 5 inside `rbinom()`.
+
+The sample sizes are 5, 10, 15, then every integer from 20 through 30, then 40, 50, and 100. Sample sizes 5, 10, and 15 show the skewed end. The integers from 20 through 30 are the search around the predicted change. Jumping from 20 to 30 would make 30 look like the answer only because nothing in between had been tried. Sample size 30 is also the rule of thumb this project is testing.
+
+A sample size counts as normal enough when four things are all true: the absolute skewness of the 10,000 sample means is under 0.25, the theoretical skewness $1.193/\sqrt{n}$ is also under 0.25, the absolute excess kurtosis is under 0.50, and the simulated standard error is within 10% of the theoretical standard error. The theoretical skewness is included because this population lands close to the cutoff.
+
+The random seed is the last four digits of the student ID, set once, immediately before the draws.
+
+```{r}
+student_id <- 1069
+B <- 10000
+sample_sizes <- c(5, 10, 15, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 40, 50, 100)
+trials <- 5
+prob <- 0.10
+mu <- trials * prob
+sigma <- sqrt(trials * prob * (1 - prob))
+pop_skew <- (1 - 2 * prob) / sigma
+
+skewness <- function(x) {
+  z <- (x - mean(x)) / sd(x)
+  mean(z^3)
+}
+
+excess_kurtosis <- function(x) {
+  z <- (x - mean(x)) / sd(x)
+  mean(z^4) - 3
+}
+
+set.seed(student_id)
+
+results <- data.frame()
+focus_n <- c(5, 23, 30)
+stored_means <- list()
+
+for (n in sample_sizes) {
+  sample_means <- replicate(B, mean(rbinom(n, size = trials, prob = prob)))
+  simulated_se <- sd(sample_means)
+  theoretical_se <- sigma / sqrt(n)
+
+  results <- rbind(
+    results,
+    data.frame(
+      sample_size = n,
+      simulated_mean = mean(sample_means),
+      theoretical_mean = mu,
+      simulated_se = simulated_se,
+      theoretical_se = theoretical_se,
+      se_ratio = simulated_se / theoretical_se,
+      skewness = skewness(sample_means),
+      theory_skewness = pop_skew / sqrt(n),
+      excess_kurtosis = excess_kurtosis(sample_means)
+    )
+  )
+
+  if (n %in% focus_n) {
+    stored_means[[as.character(n)]] <- sample_means
+  }
+}
+
+results$meets_rule <- with(
+  results,
+  abs(skewness) < 0.25 &
+    abs(theory_skewness) < 0.25 &
+    abs(excess_kurtosis) < 0.50 &
+    abs(se_ratio - 1) <= 0.10
+)
+
+holds_n <- NA_integer_
+for (i in seq_len(nrow(results))) {
+  if (all(results$meets_rule[i:nrow(results)])) {
+    holds_n <- results$sample_size[i]
+    break
+  }
+}
+```
+
+## What the numbers say
+
+```{r}
+#| echo: false
+results_view <- results
+names(results_view) <- c(
+  "Sample size", "Simulated mean", "Theoretical mean",
+  "Simulated SE", "Theoretical SE", "SE ratio",
+  "Skewness", "Theory skewness", "Excess kurtosis",
+  "Meets the rule?"
+)
+results_view$`Meets the rule?` <- ifelse(results$meets_rule, "Yes", "No")
+kable(
+  results_view,
+  digits = 3,
+  row.names = FALSE,
+  caption = "Ten thousand sample means of binomial counts. Each count is 5 trials with success probability 0.10. The theoretical mean is 0.5. The theoretical skewness is 1.193 divided by the square root of n."
+)
+```
+
+The center matches 0.5 at every row. The simulated means run from `r round(min(results$simulated_mean), 3)` to `r round(max(results$simulated_mean), 3)`.
+
+The width matches the formula immediately. At sample size 5 the standard-error ratio is `r round(results$se_ratio[results$sample_size == 5], 3)`. Across the whole table it stays between `r round(min(results$se_ratio), 3)` and `r round(max(results$se_ratio), 3)`. A correct standard error is not evidence that the shape is normal.
+
+Skewness is the column that makes the decision. The formula drops under 0.25 at sample size 23: it is `r round(results$theory_skewness[results$sample_size == 22], 3)` at sample size 22 and `r round(results$theory_skewness[results$sample_size == 23], 3)` at sample size 23. The simulation does not follow that line in order. At sample size 22 the simulated skewness is `r round(results$skewness[results$sample_size == 22], 3)`, under the cutoff, while the formula is still over it, so that row fails. At sample size 23 the formula is under the cutoff and the simulated skewness is `r round(results$skewness[results$sample_size == 23], 3)`, which is over it, so that row fails too. The first Yes on this seed is sample size `r min(results$sample_size[results$meets_rule])`. Sample sizes 27 and 28 fail again.
+
+Excess kurtosis is not what holds the decision. It is already under 0.50 at sample size 5, where the simulated value is `r round(results$excess_kurtosis[results$sample_size == 5], 3)`. The right skew is what lasts.
+
+## What the pictures say
+
+The histograms use one bar per possible mean. The red curve is the normal approximation with mean 0.5 and standard deviation $0.671/\sqrt{n}$. The panels are sample sizes 5, 23, and 30: clearly skewed, the size where the formula crosses 0.25, and the rule of thumb.
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.4
+#| fig-cap: "Sample means of binomial counts, with one bar per possible average. The red curve is the normal approximation."
+lattice_df <- do.call(rbind, lapply(focus_n, function(n) {
+  means <- round(stored_means[[as.character(n)]] * n) / n
+  counts <- as.data.frame(table(means), stringsAsFactors = FALSE)
+  data.frame(
+    n = n,
+    sample_mean = as.numeric(counts$means),
+    density = counts$Freq / B * n,
+    spacing = 0.92 / n
+  )
+}))
+lattice_df$panel <- factor(
+  paste0("n = ", lattice_df$n),
+  levels = paste0("n = ", focus_n)
+)
+
+curve_df <- do.call(rbind, lapply(focus_n, function(n) {
+  se <- sigma / sqrt(n)
+  lower <- max(0, mu - 4 * se)
+  upper <- min(5, max(mu + 4 * se, max(stored_means[[as.character(n)]])))
+  xs <- seq(lower, upper, length.out = 300)
+  data.frame(
+    panel = factor(paste0("n = ", n), levels = levels(lattice_df$panel)),
+    x = xs,
+    y = dnorm(xs, mean = mu, sd = se)
+  )
+}))
+
+ggplot(lattice_df, aes(sample_mean, density)) +
+  geom_col(aes(width = spacing), fill = "#9ecae1", linewidth = 0) +
+  geom_line(data = curve_df, aes(x, y), color = "#e31a1c", linewidth = 0.7) +
+  facet_wrap(~panel, nrow = 1, scales = "free") +
+  labs(x = "Sample mean", y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+At sample size 5 the bars are far apart and the right tail is longer than the red curve. At sample size 23 the bars follow the curve more closely and are still separate: the possible means are multiples of $1/23$. At sample size 30 the steps are $1/30$. Each panel has its own horizontal scale, so this picture is about shape. The next figure uses one scale, from 0 to 2, so the change in width is visible. A binomial mean of these counts cannot be negative, and it cannot be larger than 5.
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.4
+#| fig-cap: "The same binomial means on one horizontal scale, from 0 to 2. The averages pull in toward 0.5. A single count does not."
+ggplot(lattice_df, aes(sample_mean, density)) +
+  geom_col(aes(width = 1 / n), fill = "#9ecae1", linewidth = 0) +
+  geom_line(data = curve_df, aes(x, y), color = "#e31a1c", linewidth = 0.7) +
+  facet_wrap(~panel, nrow = 1, scales = "free_y") +
+  coord_cartesian(xlim = c(0, 2)) +
+  labs(x = "Sample mean", y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+On that shared scale, sample size 5 is spread out. Sample size 30 is a tight pile at 0.5. The center stays at 0.5. The population of single counts stays on 0, 1, 2, 3, 4, and 5. The averages are what pull in.
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.4
+#| fig-cap: "Q–Q plots of the binomial means. The steps are the possible averages. The red line is qqline()."
+par(mfrow = c(1, 3), mar = c(4, 4, 2.2, 1))
+for (n in focus_n) {
+  qqnorm(
+    stored_means[[as.character(n)]],
+    main = paste0("n = ", n),
+    pch = 16,
+    cex = 0.3,
+    col = "#08519c"
+  )
+  qqline(stored_means[[as.character(n)]], col = "#e31a1c", lwd = 2)
+}
+```
+
+The Q–Q plot at sample size 5 is a staircase. At sample size 23 the steps are smaller, and at sample size 30 they are finer still. A straighter plot here means the mound is roughly bell-shaped, even though the means still land on a grid. I treated the plot as supporting evidence, not as a separate cutoff.
+
+A Shapiro–Wilk test is a fifth check. The test accepts at most 5,000 values, so each row uses a random 5,000 of the 10,000 means. That subsample is drawn after the experiment, with the same student seed, so the table of means does not change.
+
+```{r}
+#| results: hide
+shapiro_results <- do.call(rbind, lapply(focus_n, function(n) {
+  set.seed(student_id)
+  fit <- shapiro.test(sample(stored_means[[as.character(n)]], 5000))
+  data.frame(
+    sample_size = n,
+    W = unname(fit$statistic),
+    p_value = fit$p.value
+  )
+}))
+```
+
+```{r}
+#| echo: false
+shapiro_view <- shapiro_results
+shapiro_view$p_value <- format.pval(shapiro_results$p_value, digits = 3, eps = 0.001)
+names(shapiro_view) <- c("Sample size", "W", "p-value")
+kable(
+  shapiro_view,
+  digits = 3,
+  row.names = FALSE,
+  caption = "Shapiro–Wilk tests on 5,000 of the 10,000 binomial means. The means sit on a grid, so this test is not the cutoff."
+)
+```
+
+W moves toward 1, from `r round(shapiro_results$W[shapiro_results$sample_size == 5], 3)` at sample size 5 to `r round(shapiro_results$W[shapiro_results$sample_size == 30], 3)` at sample size 30. The p-values are `r format.pval(shapiro_results$p_value[shapiro_results$sample_size == 5], digits = 3, eps = 0.001)`, `r format.pval(shapiro_results$p_value[shapiro_results$sample_size == 23], digits = 3, eps = 0.001)`, and `r format.pval(shapiro_results$p_value[shapiro_results$sample_size == 30], digits = 3, eps = 0.001)`. The means are tied on multiples of $1/n$, and Shapiro–Wilk assumes a continuous distribution, so a small p-value here is partly that discreteness. The rule in this file stays the skewness, the excess kurtosis, and the standard-error check.
+
+## Conclusion
+
+Sample size `r min(results$sample_size[results$meets_rule])` was the first isolated passing value. Sample sizes 27 and 28 fail after that. I selected sample size `r holds_n` because it was the smallest tested sample size after which every larger tested value in this table passed. At that size the skewness is `r round(results$skewness[results$sample_size == holds_n], 3)`, the theoretical skewness is `r round(results$theory_skewness[results$sample_size == holds_n], 3)`, the excess kurtosis is `r round(results$excess_kurtosis[results$sample_size == holds_n], 3)`, and the standard-error ratio is `r round(results$se_ratio[results$sample_size == holds_n], 3)`.
+
+That is a statement about the tested rows. It is not a proof that every sample size of `r holds_n` or larger passes.
+
+The formula first drops under 0.25 at sample size 23. That row does not pass. The simulated skewness there is `r round(results$skewness[results$sample_size == 23], 3)`. Sample size 30 passes: skewness `r round(results$skewness[results$sample_size == 30], 3)`, theoretical skewness `r round(results$theory_skewness[results$sample_size == 30], 3)`. The standard-error ratio is already `r round(results$se_ratio[results$sample_size == 5], 3)` at sample size 5, so 30 is not what makes the width correct.
+
+I will not call the sample-size-30 picture a continuous normal curve. The averages sit on multiples of $1/30$. The bars are still a grid.
+
+The population did not become normal. One count is still mostly 0 or 1. The sampling distribution changed because each mean mixes more counts, so the pile of averages moves toward a bell and gets narrower. The only seed in this file is the student ID.
+
+**For this small binomial population, the averages begin to look roughly bell-shaped around \(n=30\). Although a smaller sample size may pass by chance, \(n=30\) is the smallest size that consistently meets the rule for all larger sample sizes tested.**
+
+## What surprised me
+
+A single look at sample size 22 would have given the wrong answer. The simulated skewness is `r round(results$skewness[results$sample_size == 22], 3)`, under 0.25, and the formula is `r round(results$theory_skewness[results$sample_size == 22], 3)`, over 0.25. Trusting the simulation alone would have called 22 normal enough. The formula says the population has not gotten there yet.
+
+The other surprise is that the Yes column does not stay Yes once it starts. This seed passes at `r min(results$sample_size[results$meets_rule])` and then fails at 27 and 28. With `r B` repetitions, the skewness estimate moves by about `r round(sqrt(6 / B), 3)`. Around sample size 25 the formula is inside that wobble, so one size can print Yes and the next size can print No. The smallest size that holds for the rest of the table is `r holds_n`, not the first row that happens to pass.

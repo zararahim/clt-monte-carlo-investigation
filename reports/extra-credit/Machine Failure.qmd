@@ -1,0 +1,303 @@
+---
+title: "Dependent machine failures"
+subtitle: "Extra credit: the next failure rate depends on the previous time"
+format:
+  html:
+    embed-resources: true
+    toc: true
+    code-fold: true
+    theme: cosmo
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+```{r}
+#| include: false
+library(ggplot2)
+library(knitr)
+student_id <- 1069
+```
+
+For the next extra-credit case, I looked at machine failure times. A failure time is often modeled as exponential, with one fixed rate. Here I let the next rate depend on how long the machine just ran, so the observations in one sample are not independent.
+
+The baseline rate is $\lambda_0 = 1$. The reference operating time is $\mu = 1$. The dependence strength is $\beta = 1.25$. If the previous operating time was longer than 1, the next failure rate goes up, so the next operating time tends to be shorter. If the previous time was shorter than 1, the next rate goes down. The question is the smallest sample size at which the sampling distribution of the mean is approximately normal, and whether 30 is enough once independence has been given up.
+
+## The population
+
+The rate at step $t$ is
+
+$$
+\lambda_t = \lambda_0 e^{\beta (X_{t-1} - \mu)}.
+$$
+
+Then $X_t$ given the previous time is exponential with that rate. The first operating time uses the baseline rate, because there is no previous time yet. One sample of eight operating times is below. Each rate is computed from the time before it, and their average is one number from that one sample. The sampling distribution is the pile of averages I get later, when I repeat the whole process 10,000 times.
+
+```{r}
+set.seed(student_id)
+n <- 8
+baseline_rate <- 1
+beta <- 1.25
+reference_time <- 1
+
+failure_time <- numeric(n)
+failure_rate <- numeric(n)
+failure_rate[1] <- baseline_rate
+failure_time[1] <- rexp(1, rate = failure_rate[1])
+
+for (t in 2:n) {
+  failure_rate[t] <- baseline_rate *
+    exp(beta * (failure_time[t - 1] - reference_time))
+  failure_time[t] <- rexp(1, rate = failure_rate[t])
+}
+
+data.frame(
+  failure = 1:n,
+  operating_time = round(failure_time, 3),
+  failure_rate = round(failure_rate, 3)
+)
+mean(failure_time)
+```
+
+An independent exponential with rate 1 would have mean 1 and standard error $1/\sqrt{n}$. This process does not. A long previous time raises the next rate, and a short previous time lowers it, so the times in one sample pull on each other. I do not have a simple formula for the mean or the standard error of the sample mean. The table reports the simulated standard error, and it also reports that standard error divided by $1/\sqrt{n}$, only as a comparison with the independent exponential.
+
+## What I expected
+
+Before looking at the simulation, the prediction was:
+
+- Sample size 30 should still be right-skewed. The next time is tied to the previous one, so 30 dependent times are not 30 independent ones.
+- The simulated standard error should not match $1/\sqrt{n}$.
+- The simulated mean does not have to be 1, because the rate changes after the first observation.
+- A first Yes near the cutoff can be followed by a later No. The skewness estimate from 10,000 means wobbles by about 0.025.
+
+## How the experiment was run
+
+The sample size, $n$, is how many operating times are averaged to make one sample mean. The number of repetitions, $B = 10000$, is how many of those means were saved. The sample size is never 10,000. Each sample starts over at the baseline rate and then runs the same loop.
+
+The sample sizes are 5, 10, 20, 30, 40, 50, 75, 100, 150, 200, 250, 300, 400, and 500. Sample size 30 is the rule of thumb. The larger sizes are where I looked once 30 was clearly still skewed.
+
+A sample size counts as normal enough when two things are both true: the absolute skewness of the 10,000 sample means is under 0.25, and the absolute excess kurtosis is under 0.50. I do not also require the standard error to match $1/\sqrt{n}$. That comparison is for an independent exponential, and these times are dependent. There is no skewness formula in the example, so the decision uses the simulated skewness.
+
+The random seed is the last four digits of the student ID, set once, immediately before the draws.
+
+```{r}
+student_id <- 1069
+B <- 10000
+baseline_rate <- 1
+beta <- 1.25
+reference_time <- 1
+sample_sizes <- c(5, 10, 20, 30, 40, 50, 75, 100, 150, 200, 250, 300, 400, 500)
+
+skewness <- function(x) {
+  z <- (x - mean(x)) / sd(x)
+  mean(z^3)
+}
+
+excess_kurtosis <- function(x) {
+  z <- (x - mean(x)) / sd(x)
+  mean(z^4) - 3
+}
+
+qq_scaled_rmse <- function(x) {
+  x <- sort(x)
+  theo <- qnorm(ppoints(length(x)))
+  qs <- as.numeric(quantile(x, c(0.25, 0.75)))
+  tqs <- qnorm(c(0.25, 0.75))
+  slope <- diff(qs) / diff(tqs)
+  intercept <- qs[1] - slope * tqs[1]
+  fitted <- intercept + slope * theo
+  sqrt(mean((x - fitted)^2)) / sd(x)
+}
+
+set.seed(student_id)
+
+results <- data.frame()
+stored_means <- list()
+
+for (n in sample_sizes) {
+  sample_means <- numeric(B)
+  for (b in 1:B) {
+    failure_time <- numeric(n)
+    failure_rate <- numeric(n)
+    failure_rate[1] <- baseline_rate
+    failure_time[1] <- rexp(1, rate = failure_rate[1])
+    if (n > 1) {
+      for (t in 2:n) {
+        failure_rate[t] <- baseline_rate *
+          exp(beta * (failure_time[t - 1] - reference_time))
+        failure_time[t] <- rexp(1, rate = failure_rate[t])
+      }
+    }
+    sample_means[b] <- mean(failure_time)
+  }
+
+  simulated_se <- sd(sample_means)
+  results <- rbind(
+    results,
+    data.frame(
+      sample_size = n,
+      simulated_mean = mean(sample_means),
+      simulated_se = simulated_se,
+      independent_se = 1 / sqrt(n),
+      se_ratio = simulated_se / (1 / sqrt(n)),
+      skewness = skewness(sample_means),
+      excess_kurtosis = excess_kurtosis(sample_means),
+      qq_discrepancy = qq_scaled_rmse(sample_means)
+    )
+  )
+  stored_means[[as.character(n)]] <- sample_means
+}
+
+results$meets_rule <- with(
+  results,
+  abs(skewness) < 0.25 & abs(excess_kurtosis) < 0.50
+)
+
+first_passing_n <- min(results$sample_size[results$meets_rule])
+holds_n <- NA_integer_
+for (i in seq_len(nrow(results))) {
+  if (all(results$meets_rule[i:nrow(results)])) {
+    holds_n <- results$sample_size[i]
+    break
+  }
+}
+late_failures <- results$sample_size[
+  results$sample_size > first_passing_n & !results$meets_rule
+]
+focus_n <- c(30, first_passing_n, holds_n)
+```
+
+## What the numbers say
+
+```{r}
+#| echo: false
+results_view <- results
+names(results_view) <- c(
+  "Sample size", "Simulated mean", "Simulated SE",
+  "Independent SE", "Ratio to independent SE",
+  "Skewness", "Excess kurtosis", "QQ discrepancy",
+  "Meets the rule?"
+)
+results_view$`Meets the rule?` <- ifelse(results$meets_rule, "Yes", "No")
+kable(
+  results_view,
+  digits = 3,
+  row.names = FALSE,
+  caption = "Ten thousand sample means of dependent operating times. The independent SE is 1 over the square root of n, the standard error of an exponential with rate 1. It is a comparison, not the rule."
+)
+```
+
+The simulated mean is above 1 at every row. At sample size 30 it is `r round(results$simulated_mean[results$sample_size == 30], 3)`. At sample size 500 it is `r round(results$simulated_mean[results$sample_size == 500], 3)`. The mean is not stuck at the baseline value of 1, because later rates depend on the times that already happened.
+
+The simulated standard error stays larger than $1/\sqrt{n}$. The ratio is `r round(results$se_ratio[results$sample_size == 30], 3)` at sample size 30 and `r round(results$se_ratio[results$sample_size == 500], 3)` at sample size 500. Dependence does not fade out of the width on this grid.
+
+The first Yes is sample size `r first_passing_n`. After that, sample sizes `r paste(late_failures, collapse = ", ")` fail. The smallest tested size after which every larger tested row passes is `r holds_n`. At that size the skewness is `r round(results$skewness[results$sample_size == holds_n], 3)` and the excess kurtosis is `r round(results$excess_kurtosis[results$sample_size == holds_n], 3)`. Sample size 500 also passes, and it is the last row in the table. Nothing larger was tested.
+
+## What the pictures say
+
+The panels are sample size 30, the first Yes, and the first size that keeps passing. The red curve uses the simulated mean and the simulated standard error of that row, because this process does not have a simple normal formula.
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.4
+#| fig-cap: "Sampling distributions of the dependent operating-time mean. The red curve uses the simulated mean and standard error."
+plot_means <- do.call(rbind, lapply(focus_n, function(n) {
+  data.frame(n = n, sample_mean = stored_means[[as.character(n)]])
+}))
+plot_means$panel <- factor(
+  paste0("n = ", plot_means$n),
+  levels = paste0("n = ", focus_n)
+)
+curve_df <- do.call(rbind, lapply(focus_n, function(n) {
+  row <- results[results$sample_size == n, ]
+  xs <- seq(max(0, row$simulated_mean - 4 * row$simulated_se),
+            row$simulated_mean + 4 * row$simulated_se, length.out = 300)
+  data.frame(
+    panel = factor(paste0("n = ", n), levels = levels(plot_means$panel)),
+    x = xs,
+    y = dnorm(xs, mean = row$simulated_mean, sd = row$simulated_se)
+  )
+}))
+ggplot(plot_means, aes(sample_mean)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 40, fill = "#9ecae1", linewidth = 0) +
+  geom_line(data = curve_df, aes(x, y), color = "#e31a1c", linewidth = 0.8) +
+  facet_wrap(~panel, nrow = 1, scales = "free") +
+  labs(x = "Sample mean", y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+At sample size 30 the right tail is still long. The later panels sit closer to a mound. Each panel has its own horizontal scale, so this picture is about shape. The next figure uses one scale, from 0 to 4.
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.4
+#| fig-cap: "The same operating-time means on one horizontal scale, from 0 to 4."
+ggplot(plot_means, aes(sample_mean)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 40, fill = "#9ecae1", linewidth = 0) +
+  geom_line(data = curve_df, aes(x, y), color = "#e31a1c", linewidth = 0.8) +
+  facet_wrap(~panel, nrow = 1, scales = "free_y") +
+  coord_cartesian(xlim = c(0, 4)) +
+  labs(x = "Sample mean", y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.4
+#| fig-cap: "Normal Q–Q plots of the dependent operating-time means. The red line is qqline()."
+par(mfrow = c(1, 3), mar = c(4, 4, 2.2, 1))
+for (n in focus_n) {
+  qqnorm(
+    stored_means[[as.character(n)]],
+    main = paste0("n = ", n),
+    pch = 16,
+    cex = 0.3,
+    col = "#08519c"
+  )
+  qqline(stored_means[[as.character(n)]], col = "#e31a1c", lwd = 2)
+}
+```
+
+The Q–Q discrepancy at sample size 30 is `r round(results$qq_discrepancy[results$sample_size == 30], 3)`, and at sample size `r holds_n` it is `r round(results$qq_discrepancy[results$sample_size == holds_n], 3)`. That number is supporting evidence. It is not a separate cutoff.
+
+```{r}
+#| results: hide
+shapiro_results <- do.call(rbind, lapply(focus_n, function(n) {
+  set.seed(student_id)
+  fit <- shapiro.test(sample(stored_means[[as.character(n)]], 5000))
+  data.frame(sample_size = n, W = unname(fit$statistic), p_value = fit$p.value)
+}))
+```
+
+```{r}
+#| echo: false
+shapiro_view <- shapiro_results
+shapiro_view$p_value <- format.pval(shapiro_results$p_value, digits = 3, eps = 0.001)
+names(shapiro_view) <- c("Sample size", "W", "p-value")
+kable(
+  shapiro_view,
+  digits = 3,
+  row.names = FALSE,
+  caption = "Shapiro–Wilk tests on 5,000 of the 10,000 operating-time means. This test is not the cutoff."
+)
+```
+
+## Conclusion
+
+Sample size 30 is not enough. The skewness there is `r round(results$skewness[results$sample_size == 30], 3)`, and the excess kurtosis is `r round(results$excess_kurtosis[results$sample_size == 30], 3)`. The ratio to the independent exponential standard error is `r round(results$se_ratio[results$sample_size == 30], 3)`. The width is already about twice $1/\sqrt{n}$, and the shape is still skewed.
+
+The first Yes is sample size `r first_passing_n`. Sample size `r paste(late_failures, collapse = ", ")` fails after that. I selected sample size `r holds_n` because it was the smallest tested size after which every larger tested row passed. The only larger tested row is 500, and it passes. That describes this table. It is not a proof that every sample size of `r holds_n` or larger passes.
+
+The operating times did not become independent. Each rate is still computed from the previous time. Thirty dependent times are not thirty independent exponential draws. The only seed in this file is the student ID, `r student_id`.
+
+**For this dependent machine-failure process, \(n=30\) is not enough. The sample means only consistently meet the normality rule at the largest tested size, \(n=500\), because each operating time depends on the one before it.**
+
+## What surprised me
+
+I expected the mean to stay near 1, because the baseline rate is 1. It does not. By sample size 30 the simulated mean is `r round(results$simulated_mean[results$sample_size == 30], 3)`, and it stays near `r round(results$simulated_mean[results$sample_size == 500], 3)` at the large end of the table.
+
+The other surprise is that the standard-error ratio does not settle toward 1. It is `r round(results$se_ratio[results$sample_size == 5], 3)` at sample size 5 and `r round(results$se_ratio[results$sample_size == 500], 3)` at sample size 500. Making the sample longer narrows the sampling distribution, but it does not turn these times into independent exponential draws. The skewness is the part that eventually drops under 0.25, and even then the next tested size can fail.

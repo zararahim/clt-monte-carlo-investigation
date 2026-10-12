@@ -1,0 +1,227 @@
+---
+title: "How fast does normal happen?"
+subtitle: "Project summary: is 30 enough?"
+format:
+  html:
+    embed-resources: true
+    toc: true
+    code-fold: true
+    theme: cosmo
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+```{r}
+#| include: false
+student_id <- 1069
+```
+
+The Central Limit Theorem states that the sampling distribution of the sample mean becomes approximately normal as the sample size increases. A common textbook rule of thumb is that this occurs once $n = 30$. The purpose of this project is to determine whether 30 is a universal threshold, or whether the required sample size depends on the population from which the observations are drawn.
+
+For each population, I identified the smallest sample size at which the sampling distribution of the mean is approximately normal. I did not require the populations to share one answer. For the Cauchy distribution, I also allowed the conclusion that no finite sample size is sufficient.
+
+I studied five required populations: a standard normal distribution, a fair six-sided die, an exponential distribution with rate 1, a binomial distribution with 5 trials and success probability 0.10, and a Cauchy distribution with location 0 and scale 1. I also studied three extra-credit populations. In the Bernoulli case, the trials are independent, but the success probability decreases from 0.90 to 0.50, so the trials are not identically distributed. In the machine-failure case, the baseline rate is 1 and the next rate is $\lambda_t = e^{1.25(X_{t-1}-1)}$, so successive observations are dependent. In the age-at-death case, the population is a discrete distribution on the ages 0 through 100, with an early-death component that declines quickly and an adult component centered at age 65. Each population is reported in its own file. This file compares the results. The histograms, the Q–Q plots, and the full tables are in those reports, and the list of files is in `README.md`.
+
+## Words used in the tables
+
+The definitions below are the ones I use when I describe a sample size as close enough to normal.
+
+**Population.** The population is the distribution of a single observation, before any averaging. One roll of the die is one draw from that population, and one exponential waiting time is one draw from that population.
+
+**Sample size, $n$.** The sample size is the number of observations that are averaged to produce one sample mean. This is the quantity the project varies. The sample size is never 10,000.
+
+**The 10,000 repetitions.** For each sample size, I calculated the sample mean 10,000 times. The collection of those means is the sampling distribution of the sample mean. One sample produces one mean. The sampling distribution describes the variation among many means.
+
+**Standard error.** The standard error measures the spread of the sampling distribution. When the observations are independent and the variance is finite, it equals the population standard deviation divided by $\sqrt{n}$. A larger sample size concentrates the sample means more tightly around the population mean.
+
+**Skewness.** Skewness measures asymmetry. A value of zero means that the left and right sides of the distribution match. A positive value means that the right tail is longer, which is the pattern in the exponential sample means at small sample sizes. I treated the shape as close enough to normal when the absolute skewness was under 0.25.
+
+**Excess kurtosis.** Excess kurtosis measures the weight of the tails relative to a normal distribution. A normal distribution has excess kurtosis 0. A positive value means that extreme sample means occur more often than they would under a normal curve. A negative value means that the tails are lighter than those of a normal curve, which is the pattern for a flat distribution. The distribution of a single die roll is flat, so the excess kurtosis of its sample mean begins negative and moves toward zero as more rolls are averaged. I treated the tails as close enough to normal when the absolute excess kurtosis was under 0.50. The word "excess" means that 3 has already been subtracted. The raw fourth moment of a normal distribution is 3, so the subtraction places a bell curve at 0.
+
+**Q–Q plot.** A normal Q–Q plot compares the ordered sample means with the straight line expected under a normal distribution. When the points follow that line, the shape is close to normal. When the plot forms a staircase, the sample means still take values on a grid, as they do for the die and for the binomial counts. I used the plots as visual evidence together with the numerical criteria. The Q–Q plot was not a separate cutoff.
+
+## How I ran the simulations
+
+```{r}
+student_id <- 1069
+B <- 10000
+```
+
+For a chosen sample size $n$, I drew $n$ observations, computed their mean, and saved that mean. I repeated this procedure 10,000 times. Those 10,000 means are the sampling distribution that I plotted and summarized. The sample size is never 10,000. The random seed is `r student_id`, the last four digits of my student ID, and I set it immediately before the draws in each file. After the normal analysis was complete, I repeated that same grid once with seed `r student_id + 1`. I used the second run only to see whether a different seed changed the exact estimates. I did not use it to select a sample size.
+
+I compared each simulated mean with the theoretical mean, and each simulated standard error with the theoretical standard error. Where the observations are independent and the variance is finite, the theoretical standard error is $\sigma/\sqrt{n}$. The non-identical Bernoulli trials do not share a single $\sigma$, so their standard error is obtained by adding each observation's own variance. The machine-failure times have no simple formula of the form $\sigma/\sqrt{n}$, because each rate depends on the previous operating time. That report compares the simulated standard error with $1/\sqrt{n}$, the standard error of an independent exponential random variable with rate 1, and that comparison is not a pass-fail criterion. I also computed the skewness and excess kurtosis of the 10,000 means. When a formula for the skewness of the mean exists, I reported it next to the simulated skewness. Each report includes a histogram and a normal Q–Q plot. Those figures are evidence. They are not a second cutoff.
+
+I did not use the same list of sample sizes for every population. Each report examines the sample sizes at which that population changes. If the binomial grid had jumped from 20 to 30, then 30 would have appeared to be the answer only because no intermediate sample size had been tested.
+
+## What "approximately normal" means here
+
+For a population with finite variance, I classified a sample size as close enough to normal only when all four of the following conditions held:
+
+1. The absolute skewness of the 10,000 sample means is under 0.25.
+2. The absolute excess kurtosis of those means is under 0.50.
+3. The simulated standard error is within 10% of $\sigma/\sqrt{n}$.
+4. When a formula for the skewness of the mean exists, that formula is also under 0.25 in absolute value.
+
+I added the fourth condition after examining the binomial results. At sample size 22, the simulated skewness fell under 0.25 while the formula was still above 0.25. A single noisy simulation can therefore cross the cutoff before the population has done so. The same instability appeared later in that search: a sample size can meet the rule and a larger tested sample size can fail it.
+
+The cutoffs are judgment calls. I rescored the same exponential means with a skewness cutoff of 0.20. The formula $2/\sqrt{n}$ equals 0.20 at sample size 100, so the stricter cutoff is not met anywhere on the exponential grid, and the original answer remains 70. A different cutoff would not produce a finite answer for the Cauchy distribution, and it would not make the die as slow as the exponential distribution.
+
+The Cauchy distribution has no finite variance, so the four conditions above cannot be applied. That report uses the median, the interquartile range, and the proportion of means outside $-10$ to $10$.
+
+| Population | Sample sizes in that file |
+|---|---|
+| Standard normal | 1, then 5, 10, 20, 30, 40, 50, 60, 70, 80, and 100. Sample sizes 2, 3, and 4 are omitted because the mean is already normal at sample size 1. |
+| Six-sided die | 1, 2, 3, 4, then 5, 10, 20, 30, 40, 50, 60, 70, 80, and 100. The kurtosis cutoff is crossed between 2 and 3. |
+| Exponential, rate 1 | 5, 10, 20, 30, 40, 50, 60, 70, 80, and 100. The skewness formula crosses 0.25 between 60 and 70. |
+| Binomial, 5 trials, probability 0.10 | 5, 10, 15, every integer from 20 through 30, then 40, 50, and 100. The 5 is the number of trials within one observation, not the sample size. |
+| Cauchy, location 0, scale 1 | 5, 10, 20, 30, 40, 50, 60, 70, 80, and 100. There is no threshold to locate. |
+| Non-identical Bernoulli, extra credit | 2, 3, 4, 5, every integer from 8 through 18, then 20, 30, 40, 50, 60, 70, 80, and 100. The probabilities decrease from 0.90 to 0.50. The skewness formula crosses 0.25 between 9 and 10. |
+| Dependent machine failure, extra credit | 5, 10, 20, 30, 40, 50, 75, 100, 150, 200, 250, 300, 400, and 500. The baseline rate is 1, $\beta = 1.25$, and the reference time is 1. |
+| Age at death, extra credit | 5, 10, every integer from 11 through 25, then 30, 40, 50, and 100. The skewness formula crosses 0.25 between 11 and 12. |
+
+## The answers
+
+| Population | What the file examines | Smallest n that holds | At sample size 30 |
+|---|---|---|---|
+| Standard normal | Histogram, Q–Q plot, mean, standard error, skewness, and excess kurtosis | 1. The mean is already exactly normal, so there is no transition. Sample size 1 is the smallest value tested, rather than the sample size at which the theorem begins to apply. | Passes. Sample size 30 is not a threshold. The standard error is smaller than at sample size 1, and the shape was already normal. |
+| Six-sided die | One bar per possible average, Q–Q plot, mean, standard error, skewness, and excess kurtosis | 3 under the numerical rule. The histogram and Q–Q plot at sample size 3 are still discrete. A visually smooth bell curve is more convincing around sample size 30. | Passes. The bars are close enough to read as one mound. The numerical criterion was already met at sample size 3. |
+| Exponential, rate 1 | Histogram, Q–Q plot, mean, standard error, skewness, the formula $2/\sqrt{n}$, and excess kurtosis | 70. Sample size 60 is the last failure. Both the simulated skewness and the formula are just under 0.25. | Fails. The standard-error ratio is already about 1. The skewness is still about 0.29, and the formula is about 0.37. |
+| Binomial, 5 trials, probability 0.10 | One bar per possible average, Q–Q plot, mean, standard error, skewness, the skewness formula, and excess kurtosis | 29. This is the smallest tested sample size after which every larger tested value passed. The first isolated pass was 24, and sample sizes 27 and 28 then failed. This result describes the tested table. | Passes. The averages still fall on multiples of $1/30$. |
+| Cauchy, location 0, scale 1 | Histogram, Q–Q plot, median, interquartile range, and the share of means outside $-10$ to $10$. Skewness and kurtosis are omitted because the variance is infinite. | $n =$ no finite sample size found. The sample mean is Cauchy at every sample size. | Fails. The interquartile range is still about 2, and about 6% of the means fall outside $-10$ to $10$. Sample size 100 fails in the same way. |
+| Non-identical Bernoulli, extra credit. Probabilities decrease from 0.90 to 0.50. | Probability schedule, histogram, Q–Q plot, mean, standard error from each observation's variance, skewness, the skewness formula, and excess kurtosis | 10. The formula crosses 0.25 at sample size 10, and that row is the first pass. Every larger tested row on this seed also passes. | Passes. The skewness is $-0.169$, and the formula is $-0.141$. The averages still fall on multiples of $1/30$. |
+| Dependent machine failure, extra credit. Baseline rate 1, $\beta = 1.25$. | Histogram, Q–Q plot, simulated mean, simulated standard error, comparison with $1/\sqrt{n}$, skewness, and excess kurtosis | 400. The first pass is 250, and sample size 300 then fails. Sample sizes 400 and 500 pass. Because 500 is the last row, this result describes the tested table. | Fails. The skewness is 0.675 and the excess kurtosis is 0.589. The simulated standard error is about 2.09 times $1/\sqrt{n}$. The simulated mean is 1.641. |
+| Age at death, extra credit. Ages 0 through 100, with early-death decay and a component centered at 65. | Histogram, Q–Q plot, mean, standard error, skewness, the skewness formula, and excess kurtosis | 16. The formula crosses 0.25 at sample size 12. The first pass is 12, and sample size 15 then fails. From 16 onward, every larger tested row passes. This result describes the tested table. | Passes. The skewness is $-0.182$, the formula is $-0.157$, and the standard-error ratio is 0.992. |
+
+The individual report for each population contains the histogram, the Q–Q plot, and the numerical results used to justify the selected sample size. This summary compares those conclusions. For the Cauchy distribution, both the individual report and this summary conclude that no reasonable finite sample size was found. The sample mean remains Cauchy at every sample size I tested.
+
+## Summary table
+
+The table below uses the sample size selected in each report. Skewness and excess kurtosis are the simulated values from that row, on seed 1069. Excess kurtosis is the fourth moment minus 3. A uniform distribution appears in the example table in the instructions, but it was not assigned, so it is omitted here.
+
+```{=html}
+<style>
+table.chosen-n-table { width: 100%; table-layout: fixed; margin-bottom: 1rem; }
+table.chosen-n-table th, table.chosen-n-table td { vertical-align: top; overflow-wrap: anywhere; }
+table.chosen-n-table td:nth-child(2),
+table.chosen-n-table td:nth-child(3),
+table.chosen-n-table td:nth-child(4),
+table.chosen-n-table th:nth-child(2),
+table.chosen-n-table th:nth-child(3),
+table.chosen-n-table th:nth-child(4) { text-align: right; }
+</style>
+<table class="table table-sm chosen-n-table" style="width:100%; table-layout:fixed;">
+<colgroup>
+<col style="width: 16%">
+<col style="width: 10%">
+<col style="width: 12%">
+<col style="width: 14%">
+<col style="width: 48%">
+</colgroup>
+<thead>
+<tr>
+<th>Population</th>
+<th>Smallest \(n\) judged normal</th>
+<th>Skewness at chosen \(n\)</th>
+<th>Excess kurtosis at chosen \(n\)</th>
+<th>Key observation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Normal</td>
+<td>1</td>
+<td>\(-0.032\)</td>
+<td>0.052</td>
+<td>Already exactly normal at every sample size, including the smallest tested value, \(n = 1\).</td>
+</tr>
+<tr>
+<td>Die</td>
+<td>3</td>
+<td>\(-0.014\)</td>
+<td>\(-0.465\)</td>
+<td>The numerical rule passes at 3, while the histogram is still separate bars. A smooth bell is more convincing near 30 (skewness 0.009, excess kurtosis \(-0.095\)).</td>
+</tr>
+<tr>
+<td>Exponential</td>
+<td>70</td>
+<td>0.236</td>
+<td>0.071</td>
+<td>At 30 the standard error is already accurate, but the skewness is not. Sample size 60 is the last failure.</td>
+</tr>
+<tr>
+<td>Binomial</td>
+<td>29</td>
+<td>0.185</td>
+<td>\(-0.011\)</td>
+<td>The first pass is 24, then 27 and 28 fail. Sample size 29 is the smallest tested size that continues to pass.</td>
+</tr>
+<tr>
+<td>Cauchy</td>
+<td>No finite \(n\)</td>
+<td>Not used</td>
+<td>Not used</td>
+<td>The mean and variance are infinite. The interquartile range stays near 2, and about 6% of the means fall outside \(-10\) to 10.</td>
+</tr>
+<tr>
+<td>Bernoulli, extra credit</td>
+<td>10</td>
+<td>\(-0.231\)</td>
+<td>\(-0.161\)</td>
+<td>The trials are not identically distributed. The formula crosses at 10, and every larger tested row passes.</td>
+</tr>
+<tr>
+<td>Machine failure, extra credit</td>
+<td>400</td>
+<td>0.141</td>
+<td>0.009</td>
+<td>The observations are dependent. The first pass is 250, then 300 fails. The standard error stays about twice \(1/\sqrt{n}\).</td>
+</tr>
+<tr>
+<td>Age at death, extra credit</td>
+<td>16</td>
+<td>\(-0.221\)</td>
+<td>0.019</td>
+<td>Still independent and identically distributed. The formula crosses at 12, the first pass is 12, and 15 then fails.</td>
+</tr>
+</tbody>
+</table>
+```
+
+## Is 30 enough?
+
+No. These results do not support a universal rule of $n = 30$.
+
+The standard normal sampling distribution is exactly normal at every sample size, including $n = 1$, so 30 is not a threshold there. The die meets the numerical rule at $n = 3$, and its histogram becomes a smooth bell curve around $n = 30$. For the binomial distribution, 24 is an isolated pass and 27 and 28 fail afterward, so the reported sample size is 29; 30 also passes, and the averages still fall on multiples of $1/30$. The exponential distribution fails at 30, where the skewness is still about 0.29 and $2/\sqrt{30}$ is about 0.37, and it first meets the rule at 70. The Cauchy distribution fails at 30 and at 100. Its sample mean remains Cauchy, the interquartile range stays near 2, and the ordinary standard deviation of the simulated means reaches 68357 at sample size 100.
+
+Sample size 30 passes for the non-identical Bernoulli trials, where the selected sample size is 10, and for age at death, where the selected sample size is 16 after a failure at 15. It fails for the dependent machine failures. At $n = 30$ the skewness is 0.675 and the excess kurtosis is 0.589, the first pass is 250, sample size 300 fails, and the tested answer is 400.
+
+## Which populations settled fastest
+
+The normal distribution required no transition, because it is exactly normal at $n = 1$. Among the remaining populations, the die meets the numerical rule first, at $n = 3$, followed by the Bernoulli trials at 10, age at death at 16, and the binomial distribution at 29. The exponential distribution is slower because of its strong right skew, and it first meets the rule at 70. The machine failures are the slowest population with a finite answer on these grids. Each rate depends on the previous operating time, the first pass is 250, sample size 300 fails, and 400 is the smallest tested size that continues to pass. The simulated standard error remains about twice $1/\sqrt{n}$ even at sample size 500. The Cauchy distribution does not settle. Its sample mean is Cauchy at every finite $n$, and increasing the sample size from 5 to 100 left the interquartile range near 2.
+
+## Final comparison
+
+| Population | Main assumption issue | First numerical pass | Final selected n | Main evidence |
+|---|---|---:|---:|---|
+| Normal | None. The population is already normal. | 1 | No transition | Exact theory |
+| Die | Discrete population | 3 | About 30 visually | Histogram and Q–Q plot |
+| Exponential | Strong right skew | 70 | 70 | Skewness and theory |
+| Binomial | Discrete and skewed | 24 | 29 on the tested table | Refined search |
+| Cauchy | Infinite mean and variance | None | No finite n | Persistent heavy tails |
+| Bernoulli, extra credit | Not identically distributed | 10 | 10 on the tested table | Skewness and the sum of variances |
+| Machine failure, extra credit | Dependence | 250 | 400 on the tested table | Skewness. The standard error stays about twice $1/\sqrt{n}$. |
+| Age at death, extra credit | Irregular shape, still iid | 12 | 16 on the tested table | Skewness and theory |
+
+The table separates the first numerical pass from the sample size I reported. For the die, 3 is the numerical pass and about 30 is the visual description. For the binomial distribution, the machine failures, and age at death, an early pass was followed by a later failure, so the reported sample size is the first tested size that continued to pass. The exponential answer remains 70 under the cutoff of 0.25. A cutoff of 0.20 is not met on that grid.
+
+## Assumptions
+
+The usual theorem requires independent observations, identical distributions, and a finite variance.
+
+Dependence changed the width as well as the shape. For the machine failures, the next rate is $e^{1.25(X_{t-1}-1)}$ times a baseline rate of 1. At sample size 30 the simulated standard error is about 2.09 times $1/\sqrt{n}$, the skewness is 0.675, and the simulated mean is 1.641. Sample size 30 fails, and the tested answer is 400.
+
+Unequal probabilities did not have the same effect. The Bernoulli trials remain independent while the success probability decreases from 0.90 to 0.50, and the standard error adds the separate variances. The rule is met from sample size 10 onward, so sample size 30 passes.
+
+Heavy tails prevented any approach to a normal sampling distribution. The Cauchy sample mean is Cauchy at every sample size, so the answer is $n =$ no finite sample size found. The age distribution keeps both independence and identical distribution. Its difficulty is the two-component shape, the tested answer is 16, and sample size 30 passes.

@@ -1,0 +1,305 @@
+---
+title: "Six-sided die"
+subtitle: "Symmetric, but still a pile of separate bars"
+format:
+  html:
+    embed-resources: true
+    toc: true
+    code-fold: true
+    theme: cosmo
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+```{r}
+#| include: false
+library(ggplot2)
+library(knitr)
+student_id <- 1069
+```
+
+Next, I looked at a fair six-sided die. This is the first population that is not already a normal curve. A die is symmetric, so the sample mean does not start out skewed. It is also discrete. If I roll it $n$ times and take the average, that average can only land on multiples of $1/n$. I wanted to see whether that average looks like a normal curve, or like a row of bars that happen to sit in a mound.
+
+## The population
+
+One roll is equally likely to be 1, 2, 3, 4, 5, or 6. Each face has probability $1/6$. The mean is 3.5. The standard deviation is $\sqrt{35/12}$, about 1.708. The skewness is 0, because the faces are symmetric around 3.5. The shape is flat, not a bell: the excess kurtosis of one roll is about $-1.27$.
+
+```{r}
+#| echo: false
+#| fig-width: 6.5
+#| fig-height: 3.2
+#| fig-cap: "One roll of a fair die. This is the population, not a sampling distribution."
+ggplot(data.frame(face = 1:6, probability = rep(1 / 6, 6)), aes(face, probability)) +
+  geom_col(width = 0.7, fill = "#08519c") +
+  scale_x_continuous(breaks = 1:6) +
+  labs(x = "Face", y = "Probability") +
+  theme_minimal(base_size = 12)
+```
+
+The bars above are the formula, one probability for each face, and the histogram below is 10,000 individual rolls. The two pictures match, and the population is flat. Those rolls are single faces. Averaging later does not turn the die into a normal population, so one roll is still uniform on 1 through 6 at the end of the experiment.
+
+```{r}
+#| echo: false
+#| fig-width: 6.5
+#| fig-height: 3.2
+#| fig-cap: "Ten thousand individual rolls. This is the population, not a sampling distribution."
+set.seed(student_id)
+rolls_pop <- sample(1:6, 10000, replace = TRUE)
+ggplot(data.frame(face = rolls_pop), aes(face)) +
+  geom_bar(aes(y = after_stat(count / sum(count))), width = 0.7, fill = "#08519c") +
+  scale_x_continuous(breaks = 1:6, limits = c(0.5, 6.5)) +
+  labs(x = "Face", y = "Proportion") +
+  theme_minimal(base_size = 12)
+```
+
+It is easy to mix up the population, one sample, and the sampling distribution. The population is the face of one roll, which is what the pictures above show. A sample is one batch of rolls, and the sampling distribution is the collection of averages I get only after I repeat that sample many times. The Central Limit Theorem is about that last distribution. The die stays a die.
+
+Below I printed one sample of five rolls, and then their average. That average is one number from one sample. The sampling distribution is the pile of averages I get later, when I repeat the sample 10,000 times.
+
+```{r}
+set.seed(student_id)
+one_sample <- sample(1:6, 5, replace = TRUE)
+one_sample
+mean(one_sample)
+```
+
+The sample mean of $n$ independent rolls has the same mean, 3.5. Its theoretical standard error is $1.708/\sqrt{n}$. Its skewness stays near 0 at every sample size. What changes is how fine the grid of possible averages is.
+
+## What I expected
+
+Before looking at the simulation, the prediction was:
+
+- The simulated mean should stay on 3.5, and the standard-error ratio should sit near 1 at every sample size, including 1. The variance is finite, and the rolls are independent and identical.
+- Skewness should already be near 0 at sample size 1. Symmetry does not have to be earned by a larger sample.
+- One roll has excess kurtosis of about $-1.27$. For the sample mean that number should shrink by about a factor of $n$, so it should miss the 0.50 cutoff at sample sizes 1 and 2 and clear it at sample size 3.
+- A pass at sample size 3 should not be read as a smooth bell. The possible means are multiples of $1/3$, so the histogram should still be a row of separate bars.
+- A larger sample size should make those bars finer. Sample size 30 should be where the bars read as one mound, not the moment when the mean becomes symmetric.
+
+Sample size 1 redraws the bar chart above. It is on the grid because that flat shape is what the smaller samples still have to grow out of.
+
+## How the experiment was run
+
+The sample size, $n$, is how many rolls are averaged to make one sample mean. The number of repetitions, $B = 10000$, is how many of those means were saved. The sample size is never 10,000.
+
+The sample sizes are 1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 60, 70, 80, and 100. The sizes below 5 are here because a die is flat, and the excess kurtosis of the mean is predicted to cross 0.50 between 2 and 3. A grid that started at 5 would already be past that change, so 5 would look like the answer only because it was the first row. Sample size 1 redraws the six faces. Sizes 2, 3, and 4 are the search around the change. Thirty is the rule of thumb this project is testing. From 5 upward, the list matches the other reports.
+
+The same numeric rule is used here as in the normal file. A sample size passes when the absolute skewness of the 10,000 means is under 0.25, the absolute excess kurtosis is under 0.50, and the simulated standard error is within 10% of the theoretical standard error. For a discrete population those three numbers can pass while the bars are still visibly separate, so the histogram and the Q–Q plot have to be read with them.
+
+The histograms below use one bar per possible mean. The first leaves a small gap between bars so they can be counted, and each panel keeps its own horizontal scale. The second puts every panel on the scale from 1 to 6 and lets the bars touch, so the narrow mound at sample size 30 stays visible. A default histogram can drop two lattice points into one bin and invent a spike that is not in the data.
+
+The random seed is the last four digits of the student ID, set once, immediately before the draws.
+
+```{r}
+student_id <- 1069
+B <- 10000
+sample_sizes <- c(1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 60, 70, 80, 100)
+mu <- 3.5
+sigma <- sqrt(35 / 12)
+population_exkurt <- -6 * (36 + 1) / (5 * (36 - 1))
+
+skewness <- function(x) {
+  z <- (x - mean(x)) / sd(x)
+  mean(z^3)
+}
+
+excess_kurtosis <- function(x) {
+  z <- (x - mean(x)) / sd(x)
+  mean(z^4) - 3
+}
+
+set.seed(student_id)
+
+results <- data.frame()
+focus_n <- c(1, 3, 30)
+stored_means <- list()
+
+for (n in sample_sizes) {
+  sample_means <- replicate(B, mean(sample(1:6, n, replace = TRUE)))
+  simulated_se <- sd(sample_means)
+  theoretical_se <- sigma / sqrt(n)
+
+  results <- rbind(
+    results,
+    data.frame(
+      sample_size = n,
+      simulated_mean = mean(sample_means),
+      theoretical_mean = mu,
+      simulated_se = simulated_se,
+      theoretical_se = theoretical_se,
+      se_ratio = simulated_se / theoretical_se,
+      skewness = skewness(sample_means),
+      excess_kurtosis = excess_kurtosis(sample_means)
+    )
+  )
+
+  if (n %in% focus_n) {
+    stored_means[[as.character(n)]] <- sample_means
+  }
+}
+
+results$meets_rule <- with(
+  results,
+  abs(skewness) < 0.25 &
+    abs(excess_kurtosis) < 0.50 &
+    abs(se_ratio - 1) <= 0.10
+)
+```
+
+## What the numbers say
+
+```{r}
+#| echo: false
+results_view <- results
+names(results_view) <- c(
+  "Sample size", "Simulated mean", "Theoretical mean",
+  "Simulated SE", "Theoretical SE", "SE ratio",
+  "Skewness", "Excess kurtosis", "Meets the rule?"
+)
+results_view$`Meets the rule?` <- ifelse(results$meets_rule, "Yes", "No")
+kable(
+  results_view,
+  digits = 3,
+  row.names = FALSE,
+  caption = "Ten thousand sample means of a fair die. The theoretical mean is 3.5. The theoretical standard error is 1.708 divided by the square root of n."
+)
+```
+
+The center matches 3.5 at every row. The simulated means run from `r round(min(results$simulated_mean), 3)` to `r round(max(results$simulated_mean), 3)`.
+
+The width matches the formula immediately. At sample size 1 the simulated standard error is `r round(results$simulated_se[results$sample_size == 1], 3)` and the theoretical value is `r round(results$theoretical_se[results$sample_size == 1], 3)`, a ratio of `r round(results$se_ratio[results$sample_size == 1], 3)`. Across the whole table the ratio stays between `r round(min(results$se_ratio), 3)` and `r round(max(results$se_ratio), 3)`.
+
+Skewness is already near 0 at sample size 1 (`r round(results$skewness[results$sample_size == 1], 3)`). The largest absolute skewness anywhere in the table is `r round(max(abs(results$skewness)), 3)`. Excess kurtosis is the column that changes the decision. At sample size 1 it is `r round(results$excess_kurtosis[results$sample_size == 1], 3)`, and at sample size 2 it is `r round(results$excess_kurtosis[results$sample_size == 2], 3)`. Both are past the 0.50 cutoff, so those two rows fail. At sample size 3 it is `r round(results$excess_kurtosis[results$sample_size == 3], 3)`, which is inside the cutoff, and every larger row passes too.
+
+The formula for that column is the population excess kurtosis divided by $n$, about `r round(population_exkurt, 3)` at sample size 1, `r round(population_exkurt / 2, 3)` at sample size 2, and `r round(population_exkurt / 3, 3)` at sample size 3. Theory and the simulation agree on the first pass: sample size 2 is over the cutoff, and sample size 3 is under it. The simulated value at sample size 3 is a little farther from 0 than the formula, and the noise in an excess-kurtosis estimate with `r B` means is about `r round(sqrt(24 / B), 3)`, so this Yes sits close to the line. Sample size 4 has more room: excess kurtosis `r round(results$excess_kurtosis[results$sample_size == 4], 3)`, against a theoretical value of `r round(population_exkurt / 4, 3)`. The first Yes is not a discovery that symmetry arrived at sample size 3. The population was symmetric before any averaging. What arrived is a flat shape that had finally gotten close enough to a bell.
+
+## What the pictures say
+
+Each bar is one possible value of the sample mean. The red curve is the normal approximation with mean 3.5 and standard deviation $1.708/\sqrt{n}$.
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.4
+#| fig-cap: "Sample means of a fair die, with one bar per possible average. The red curve is the normal approximation."
+lattice_df <- do.call(rbind, lapply(focus_n, function(n) {
+  means <- round(stored_means[[as.character(n)]] * n) / n
+  counts <- as.data.frame(table(means), stringsAsFactors = FALSE)
+  data.frame(
+    n = n,
+    sample_mean = as.numeric(counts$means),
+    density = counts$Freq / B * n,
+    spacing = 0.92 / n
+  )
+}))
+lattice_df$panel <- factor(
+  paste0("n = ", lattice_df$n),
+  levels = paste0("n = ", focus_n)
+)
+
+curve_df <- do.call(rbind, lapply(focus_n, function(n) {
+  se <- sigma / sqrt(n)
+  # A die average is between 1 and 6. Drawing the curve farther out
+  # stretches the axis onto values the mean cannot take.
+  xs <- seq(max(1, mu - 4 * se), min(6, mu + 4 * se), length.out = 300)
+  data.frame(
+    panel = factor(paste0("n = ", n), levels = levels(lattice_df$panel)),
+    x = xs,
+    y = dnorm(xs, mean = mu, sd = se)
+  )
+}))
+
+ggplot(lattice_df, aes(sample_mean, density)) +
+  geom_col(aes(width = spacing), fill = "#9ecae1", linewidth = 0) +
+  geom_line(data = curve_df, aes(x, y), color = "#e31a1c", linewidth = 0.7) +
+  facet_wrap(~panel, nrow = 1, scales = "free") +
+  labs(x = "Sample mean", y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+At sample size 1 the six bars are the population. They are flat, and the red bell does not fit them. That is the row the numeric rule rejects. At sample size 3 the bars follow the red curve more closely, and they are still far enough apart to count: the possible means are multiples of $1/3$. The sampling distribution is a discrete mound, not a continuous bell. At sample size 30 the steps are 1/30 and the bars read as one curve. Each panel has its own horizontal scale, so this picture is about shape. The next figure uses one scale, from 1 to 6, so the change in width is visible.
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.4
+#| fig-cap: "The same die means on one horizontal scale, from 1 to 6. The averages pull in toward 3.5. A single roll does not."
+ggplot(lattice_df, aes(sample_mean, density)) +
+  geom_col(aes(width = 1 / n), fill = "#9ecae1", linewidth = 0) +
+  geom_line(data = curve_df, aes(x, y), color = "#e31a1c", linewidth = 0.7) +
+  facet_wrap(~panel, nrow = 1, scales = "free_y") +
+  coord_cartesian(xlim = c(1, 6)) +
+  labs(x = "Sample mean", y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+On that shared scale, sample size 1 is a flat block spread from 1 to 6. Sample size 30 is a tight blue pile at 3.5, with the red curve on top of it. The center stays at 3.5. The population of single rolls stays spread from 1 to 6. The averages are what pull in. The faces were already symmetric at sample size 1. What failed there was the flatness. What changed by sample size 30 is the spacing.
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.4
+#| fig-cap: "Q–Q plots of the die means. The steps are the possible averages. The red line is qqline()."
+par(mfrow = c(1, 3), mar = c(4, 4, 2.2, 1))
+for (n in focus_n) {
+  qqnorm(
+    stored_means[[as.character(n)]],
+    main = paste0("n = ", n),
+    pch = 16,
+    cex = 0.3,
+    col = "#08519c"
+  )
+  qqline(stored_means[[as.character(n)]], col = "#e31a1c", lwd = 2)
+}
+```
+
+The Q–Q plot at sample size 1 is a staircase, which is what six flat faces look like against a straight line. At sample size 3 the steps are still obvious, and at sample size 30 they are fine. A straighter Q–Q plot here means the mound is symmetric and roughly bell-shaped, even though the means still land on a grid. `qqline()` absorbs the scale, so these plots do not show the standard error shrinking from `r round(results$simulated_se[results$sample_size == 1], 3)` to `r round(results$simulated_se[results$sample_size == 30], 3)`. That shrinking is in the shared-scale histogram and in the table.
+
+A Shapiro–Wilk test is a fifth check. The null hypothesis is that the means are normal. The test accepts at most 5,000 values, so each row uses a random 5,000 of the 10,000 means. That subsample is drawn after the experiment, with the same student seed, so the table of means does not change.
+
+```{r}
+#| results: hide
+shapiro_results <- do.call(rbind, lapply(focus_n, function(n) {
+  set.seed(student_id)
+  fit <- shapiro.test(sample(stored_means[[as.character(n)]], 5000))
+  data.frame(
+    sample_size = n,
+    W = unname(fit$statistic),
+    p_value = fit$p.value
+  )
+}))
+```
+
+```{r}
+#| echo: false
+shapiro_view <- shapiro_results
+shapiro_view$p_value <- format.pval(shapiro_results$p_value, digits = 3, eps = 0.001)
+names(shapiro_view) <- c("Sample size", "W", "p-value")
+kable(
+  shapiro_view,
+  digits = 3,
+  row.names = FALSE,
+  caption = "Shapiro–Wilk tests on 5,000 of the 10,000 die means. A small p-value is evidence against a continuous normal curve."
+)
+```
+
+W moves toward 1, from `r round(shapiro_results$W[shapiro_results$sample_size == 1], 3)` at sample size 1 to `r round(shapiro_results$W[shapiro_results$sample_size == 30], 3)` at sample size 30. The p-values do not. They are `r format.pval(shapiro_results$p_value[shapiro_results$sample_size == 1], digits = 3, eps = 0.001)` at sample size 1, `r format.pval(shapiro_results$p_value[shapiro_results$sample_size == 3], digits = 3, eps = 0.001)` at sample size 3, and `r format.pval(shapiro_results$p_value[shapiro_results$sample_size == 30], digits = 3, eps = 0.001)` at sample size 30. The means are tied on a grid, and Shapiro–Wilk assumes a continuous distribution, so a rejection here is partly the discreteness the histogram already shows. The lesson says to read this test next to the plot, not instead of it. The rule in this file stays the skewness, the excess kurtosis, and the standard-error check.
+
+## Conclusion
+
+Using the numerical rule, the first passing value was sample size 3. The histogram and the Q–Q plot at that size still show noticeable discreteness. I would distinguish numerical normality at sample size 3 from a visually smooth bell shape, which becomes more convincing around sample size 30.
+
+Sample sizes 1 and 2 fail because the excess kurtosis is still past 0.50: a flat population does not get close to a bell when the average uses only one or two rolls. At sample size 3 the skewness is `r round(results$skewness[results$sample_size == 3], 3)`, the excess kurtosis is `r round(results$excess_kurtosis[results$sample_size == 3], 3)`, and the standard-error ratio is `r round(results$se_ratio[results$sample_size == 3], 3)`. The theoretical excess kurtosis at that size is `r round(population_exkurt / 3, 3)`, which is under 0.50, and at sample size 2 it is `r round(population_exkurt / 2, 3)`, which is not. Every size from 3 through 100 meets the rule. The margin at sample size 3 is thin: the simulated excess kurtosis is only about `r round(0.50 - abs(results$excess_kurtosis[results$sample_size == 3]), 3)` inside the cutoff.
+
+I will not call the sample-size-3 picture a continuous normal curve. The averages sit on multiples of $1/3$, and the histogram is a row of bars that follow $N(3.5, 1.708/\sqrt{3})$. By sample size 30 those bars are close enough to read as one mound. Thirty is not the sample size at which this mean becomes symmetric. Symmetry was already there at 1. Thirty is where the discreteness stops being the main thing the picture shows. The usual “wait until 30” rule is not what makes the standard error correct for this population. The standard-error ratio is already `r round(results$se_ratio[results$sample_size == 1], 3)` at sample size 1.
+
+The die itself did not become normal. One roll is still uniform on six faces. The sampling distribution changed because each mean mixes several rolls, so the possible averages fill in and the flat shape wears down. That is what the Central Limit Theorem claims for this population: the faces stay what they were, and the distribution of the average is what moves toward a normal curve.
+
+**For a fair die, the sample mean first passes the numerical normality rule at \(n=3\), but it does not look like a smooth bell curve until around \(n=30\), so \(30\) is a visual guideline rather than the point where normality begins.**
+
+## What surprised me
+
+The Q–Q plot does not turn into a smooth line at the first row that meets the rule. At sample size 3 the steps are still there, and by sample size 30 they are much finer, which is why the picture is more convincing then. I did not turn the Q–Q plot into its own cutoff, because the steps are still a grid of possible averages.
+
+A second trap is the histogram bin width. If the bins are not the spacing $1/n$, two possible averages can fall in one bin and the plot grows a spike that the lattice plot does not have. The bars above are one possible mean each. The distribution was discrete. It was not irregular.

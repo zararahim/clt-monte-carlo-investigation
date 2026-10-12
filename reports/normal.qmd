@@ -1,0 +1,377 @@
+---
+title: "Standard normal"
+subtitle: "Starting with a population that is already normal"
+format:
+  html:
+    embed-resources: true
+    toc: true
+    code-fold: true
+    theme: cosmo
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+```{r}
+#| include: false
+library(ggplot2)
+library(knitr)
+student_id <- 1069
+```
+
+I started with this population because it is already normally distributed, so I knew what to expect before running the simulation. The sample mean of independent normal observations is exactly normal for every sample size, including \(n=1\). This made the standard normal population a useful control case for checking whether my simulation correctly identified a distribution that was already normal. I also wanted to see whether increasing the sample size changed the shape of the distribution or only made it narrower by reducing its standard error.
+
+## The population
+
+One draw from this population is a standard normal number, with mean 0, standard deviation 1, skewness 0, and excess kurtosis 0. The curve below is the population itself. It is symmetric and bell-shaped, with thin tails, and those are the features compared later with the histograms of the sample means.
+
+```{r}
+#| echo: false
+#| fig-width: 6.5
+#| fig-height: 3.2
+#| fig-cap: "The standard normal population. Mean 0, standard deviation 1."
+curve_x <- seq(-4, 4, length.out = 400)
+ggplot(data.frame(x = curve_x, y = dnorm(curve_x)), aes(x, y)) +
+  geom_line(linewidth = 0.9, color = "#08519c") +
+  labs(x = "Observation", y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+The curve above is the formula, and the histogram below is 10,000 individual draws from that same population. These are single observations. The population is already normal, and nothing later in the experiment changes it.
+
+```{r}
+#| echo: false
+#| fig-width: 6.5
+#| fig-height: 3.2
+#| fig-cap: "Ten thousand individual standard normal draws. This is the population, not a sampling distribution."
+set.seed(student_id)
+individuals <- rnorm(10000)
+ggplot(data.frame(x = individuals), aes(x)) +
+  geom_histogram(
+    aes(y = after_stat(density)),
+    bins = 40,
+    fill = "#9ecae1",
+    color = "white"
+  ) +
+  stat_function(fun = dnorm, color = "#e31a1c", linewidth = 0.8) +
+  labs(x = "Individual value", y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+It is important to distinguish among the population, an individual sample, and the sampling distribution. The population consists of all possible individual values, which are illustrated in the figures above. A sample is one group of observations drawn from that population. When I repeatedly draw samples and calculate their means, the collection of those means forms the sampling distribution. The Central Limit Theorem describes this sampling distribution. It does not state that the original population itself becomes normal.
+
+Below I printed one sample of five standard normal draws, and then their average. That average is one number from one sample. The sampling distribution is the pile of averages I get later, when I repeat the sample 10,000 times.
+
+```{r}
+set.seed(student_id)
+one_sample <- rnorm(5)
+round(one_sample, 3)
+mean(one_sample)
+```
+
+The sample mean of independent normal observations is exactly normal for every sample size. Its mean is still 0, and its standard error is exactly $1/\sqrt{n}$. The shape does not have to change as the sample gets larger. Only the spread should tighten.
+
+## What I expected
+
+Before looking at the simulation, the prediction was that there would be no transition to find.
+
+- Every sample size in the grid, including 1, should meet the rule. Sample size 1 should not be a turning point. It is one draw from a population that is already normal.
+- The average of the simulated sample means should stay within a few hundredths of 0.
+- The simulated standard error should stay within 10% of $1/\sqrt{n}$, so the ratio of the two should sit near 1. At sample size 1 that theoretical standard error is 1. The ratio should confirm the width, not the start of normality.
+- The histograms should match the exact normal curve of the sample mean, and the Q–Q plots should be straight, at sample size 1 and at sample size 100.
+
+A failure at sample size 1 would mean the rule or the simulation was off, not that the Central Limit Theorem was slow.
+
+## How the experiment was run
+
+Two sample sizes are easy to mix up. The sample size, $n$, is how many observations go into one average, and the number of repetitions, $B = 10000$, is how many of those averages I saved so I could see the sampling distribution. The sample size is never 10,000.
+
+The sample sizes are 1, 5, 10, 20, 30, 40, 50, 60, 70, 80, and 100. I included sample size 1 because every larger size was expected to pass, and a grid that started at 5 could not show whether 5 was the smallest size that works. The mean of one observation is that observation, so this row redraws the population curve above. I left out sizes 2, 3, and 4, because for a normal population there is no change between 1 and 5 to investigate. Sample size 30 is on the list because that is the rule of thumb this project is testing, and the sizes past 30 check whether the diagnostics wander once the width has gotten small.
+
+A sample size counts as normal enough when three things are all true: the absolute skewness of the 10,000 sample means is under 0.25, the absolute excess kurtosis is under 0.50, and the simulated standard error is within 10% of the theoretical standard error. The summary file explains why those cutoffs were chosen. This file uses them as they are.
+
+The random seed is the last four digits of my student ID, and I set it once, immediately before the draws.
+
+```{r}
+student_id <- 1069
+B <- 10000
+sample_sizes <- c(1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 100)
+mu <- 0
+sigma <- 1
+
+skewness <- function(x) {
+  z <- (x - mean(x)) / sd(x)
+  mean(z^3)
+}
+
+excess_kurtosis <- function(x) {
+  z <- (x - mean(x)) / sd(x)
+  mean(z^4) - 3
+}
+
+set.seed(student_id)
+
+results <- data.frame()
+focus_n <- c(1, 5, 30)
+stored_means <- list()
+
+for (n in sample_sizes) {
+  sample_means <- replicate(B, mean(rnorm(n, mean = mu, sd = sigma)))
+  simulated_se <- sd(sample_means)
+  theoretical_se <- sigma / sqrt(n)
+
+  results <- rbind(
+    results,
+    data.frame(
+      sample_size = n,
+      simulated_mean = mean(sample_means),
+      theoretical_mean = mu,
+      simulated_se = simulated_se,
+      theoretical_se = theoretical_se,
+      se_ratio = simulated_se / theoretical_se,
+      skewness = skewness(sample_means),
+      excess_kurtosis = excess_kurtosis(sample_means)
+    )
+  )
+
+  if (n %in% focus_n) {
+    stored_means[[as.character(n)]] <- sample_means
+  }
+}
+
+results$meets_rule <- with(
+  results,
+  abs(skewness) < 0.25 &
+    abs(excess_kurtosis) < 0.50 &
+    abs(se_ratio - 1) <= 0.10
+)
+```
+
+## What the numbers say
+
+```{r}
+#| echo: false
+results_view <- results
+names(results_view) <- c(
+  "Sample size", "Simulated mean", "Theoretical mean",
+  "Simulated SE", "Theoretical SE", "SE ratio",
+  "Skewness", "Excess kurtosis", "Meets the rule?"
+)
+results_view$`Meets the rule?` <- ifelse(results$meets_rule, "Yes", "No")
+kable(
+  results_view,
+  digits = 3,
+  row.names = FALSE,
+  caption = "Ten thousand sample means at each sample size. The theoretical mean is 0 and the theoretical standard error is 1 divided by the square root of n."
+)
+```
+
+The center matches the theory at every row. The simulated means run from about `r round(min(results$simulated_mean), 3)` to `r round(max(results$simulated_mean), 3)`, against a theoretical mean of 0.
+
+The spread matches too. The standard-error ratio, simulated divided by theoretical, stays between `r round(min(results$se_ratio), 3)` and `r round(max(results$se_ratio), 3)`, which is well inside the 10% band. At sample size 1 the simulated standard error is `r round(results$simulated_se[results$sample_size == 1], 3)` and the theoretical value is `r round(results$theoretical_se[results$sample_size == 1], 3)`. At sample size 5 those two numbers are `r round(results$simulated_se[results$sample_size == 5], 3)` and `r round(results$theoretical_se[results$sample_size == 5], 3)`, and at sample size 30 they are `r round(results$simulated_se[results$sample_size == 30], 3)` and `r round(results$theoretical_se[results$sample_size == 30], 3)`.
+
+Skewness and excess kurtosis are estimates of numbers that are theoretically 0 at every sample size. The largest absolute skewness in the table is `r round(max(abs(results$skewness)), 3)`, at sample size `r results$sample_size[which.max(abs(results$skewness))]`, and the largest absolute excess kurtosis is `r round(max(abs(results$excess_kurtosis)), 3)`, at sample size `r results$sample_size[which.max(abs(results$excess_kurtosis))]`. Both sit far under the cutoffs of 0.25 and 0.50. They show that the rule does not invent a problem for a distribution that is already normal, and they do not rank the rows by how normal they are. With `r B` simulated means, the noise in a skewness estimate is about `r round(sqrt(6 / B), 3)` and the noise in an excess-kurtosis estimate is about `r round(sqrt(24 / B), 3)`. The whole skewness column sits inside that noise.
+
+The standard-error ratio is the column that actually says something about the sample size. It stays between `r round(min(results$se_ratio), 3)` and `r round(max(results$se_ratio), 3)`, so the width matches $1/\sqrt{n}$ from the first row to the last. The Q–Q plots stay close to a straight line. That line absorbs the scale, so it shows the shape, while the narrowing shows up in the standard-error column.
+
+## What the pictures say
+
+The histograms below are the sampling distribution of the mean at sample sizes 1, 5, and 30. Each panel has its own horizontal scale, so a match to the red curve is evidence about shape. The red curve is the exact distribution of the sample mean, $N(0, 1/\sqrt{n})$, and I did not fit it to the bars. At sample size 1 that curve is the standard normal itself, $N(0, 1)$. At sample size 5 it is $N(0, 1/\sqrt{5})$, whose standard deviation is 0.447.
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.3
+#| fig-cap: "Sampling distribution of the mean. The red curve is the exact normal distribution at that sample size, not a curve fitted to the bars."
+plot_means <- do.call(rbind, lapply(focus_n, function(n) {
+  data.frame(n = n, sample_mean = stored_means[[as.character(n)]])
+}))
+plot_means$panel <- factor(
+  paste0("n = ", plot_means$n),
+  levels = paste0("n = ", focus_n)
+)
+
+curve_df <- do.call(rbind, lapply(focus_n, function(n) {
+  se <- sigma / sqrt(n)
+  xs <- seq(-4 * se, 4 * se, length.out = 300)
+  data.frame(
+    panel = factor(paste0("n = ", n), levels = levels(plot_means$panel)),
+    x = xs,
+    y = dnorm(xs, mean = mu, sd = se)
+  )
+}))
+
+ggplot(plot_means, aes(sample_mean)) +
+  geom_histogram(
+    aes(y = after_stat(density)),
+    bins = 40,
+    fill = "#9ecae1",
+    color = "white"
+  ) +
+  geom_line(data = curve_df, aes(x, y), color = "#e31a1c", linewidth = 0.8) +
+  facet_wrap(~panel, nrow = 1, scales = "free") +
+  labs(x = "Sample mean", y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+At sample size 1 the bars sit on that exact curve, and they still sit on it at 5 and at 30. Because each panel is scaled to its own data, the three pictures look like the same bell, so this comparison is about shape. The next figure puts the same three sampling distributions on one horizontal scale, from $-4$ to $4$, so the change in width is visible.
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.3
+#| fig-cap: "The same sampling distributions on one horizontal scale. A larger sample size makes the mean narrower. The population did not change."
+ggplot(plot_means, aes(sample_mean)) +
+  geom_histogram(
+    aes(y = after_stat(density)),
+    bins = 40,
+    fill = "#9ecae1",
+    color = "white"
+  ) +
+  geom_line(data = curve_df, aes(x, y), color = "#e31a1c", linewidth = 0.8) +
+  facet_wrap(~panel, nrow = 1, scales = "free_y") +
+  coord_cartesian(xlim = c(-4, 4)) +
+  labs(x = "Sample mean", y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+On that shared scale, sample size 1 fills the window and sample size 30 is a narrow spike at 0, while the center stays at 0. The simulated standard error falls from `r round(results$simulated_se[results$sample_size == 1], 3)` at sample size 1, to `r round(results$simulated_se[results$sample_size == 5], 3)` at sample size 5, to `r round(results$simulated_se[results$sample_size == 30], 3)` at sample size 30, and to `r round(results$simulated_se[results$sample_size == 100], 3)` at sample size 100. The theoretical values are `r round(results$theoretical_se[results$sample_size == 1], 3)`, `r round(results$theoretical_se[results$sample_size == 5], 3)`, `r round(results$theoretical_se[results$sample_size == 30], 3)`, and `r round(results$theoretical_se[results$sample_size == 100], 3)`. The population of individual draws stayed the same width. The sampling distribution got narrower, and the shape stayed normal.
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.4
+#| fig-cap: "Normal Q–Q plots of the sample means. A straight cloud means the sampling distribution is normal. The red line is qqline()."
+par(mfrow = c(1, 3), mar = c(4, 4, 2.2, 1))
+for (n in focus_n) {
+  qqnorm(
+    stored_means[[as.character(n)]],
+    main = paste0("n = ", n),
+    pch = 16,
+    cex = 0.3,
+    col = "#08519c"
+  )
+  qqline(stored_means[[as.character(n)]], col = "#e31a1c", lwd = 2)
+}
+```
+
+The Q–Q plots are linear at all three sample sizes. `qqline()` absorbs location and scale, so a straight plot says the shape is normal whether the cloud is wide or tight. It cannot show that the standard error fell from about 1 to about 0.10, which is what the standard-error column is for.
+
+A Shapiro–Wilk test is a fifth check. The null hypothesis is that the means are normal. The test accepts at most 5,000 values, so each row uses a random 5,000 of the 10,000 means. I drew that subsample after the experiment, with the same student seed, so the table of means does not change.
+
+```{r}
+#| results: hide
+shapiro_results <- do.call(rbind, lapply(focus_n, function(n) {
+  set.seed(student_id)
+  fit <- shapiro.test(sample(stored_means[[as.character(n)]], 5000))
+  data.frame(
+    sample_size = n,
+    W = unname(fit$statistic),
+    p_value = fit$p.value
+  )
+}))
+```
+
+```{r}
+#| echo: false
+shapiro_view <- shapiro_results
+shapiro_view$p_value <- format.pval(shapiro_results$p_value, digits = 3, eps = 0.001)
+names(shapiro_view) <- c("Sample size", "W", "p-value")
+kable(
+  shapiro_view,
+  digits = 3,
+  row.names = FALSE,
+  caption = "Shapiro–Wilk tests on 5,000 of the 10,000 sample means. A large p-value is not evidence against normality."
+)
+```
+
+W is about 1 at sample sizes 1, 5, and 30, and the p-values are `r format.pval(shapiro_results$p_value[shapiro_results$sample_size == 1], digits = 3)`, `r format.pval(shapiro_results$p_value[shapiro_results$sample_size == 5], digits = 3)`, and `r format.pval(shapiro_results$p_value[shapiro_results$sample_size == 30], digits = 3)`. None of them is small, so the test agrees with the histograms. It is not the rule this project uses. With thousands of observations a Shapiro–Wilk test can reject a distribution that still looks normal, so I would read a small p-value next to the plot.
+
+## Conclusion
+
+The sampling distribution of the mean is exactly normal for every sample size, so there is no transition point at which normality begins. Sample size 1 is the smallest value I tested. Because the population was already normal, the theorem does not have to create that shape.
+
+Sample size 1 already meets the rule, with skewness `r round(results$skewness[results$sample_size == 1], 3)`, excess kurtosis `r round(results$excess_kurtosis[results$sample_size == 1], 3)`, and standard-error ratio `r round(results$se_ratio[results$sample_size == 1], 3)`. That row is one draw from the population. Every larger size, through `r max(results$sample_size)`, meets the rule as well. At sample size 5 the histogram and the Q–Q plot match $N(0, 1/\sqrt{5})$, with skewness `r round(results$skewness[results$sample_size == 5], 3)`, excess kurtosis `r round(results$excess_kurtosis[results$sample_size == 5], 3)`, and standard-error ratio `r round(results$se_ratio[results$sample_size == 5], 3)`. They already matched $N(0, 1)$ at sample size 1, so sample size 5 is not where normality starts.
+
+Sample size 30 is not a special point for this population. At n = 30 the skewness is `r round(results$skewness[results$sample_size == 30], 3)`, the excess kurtosis is `r round(results$excess_kurtosis[results$sample_size == 30], 3)`, and the standard-error ratio is `r round(results$se_ratio[results$sample_size == 30], 3)`, which are the same kind of numbers as the n = 1 row. The usual “wait until 30” rule is a rough guide for populations that are not already normal, and it is not needed here.
+
+What does change with the sample size is the width. The simulated standard error falls from `r round(results$simulated_se[results$sample_size == 1], 3)` at n = 1 to `r round(results$simulated_se[results$sample_size == 100], 3)` at n = 100. An individual draw is still standard normal. Averaging more of those draws makes the mean less variable, while the shape started out normal and stayed that way.
+
+**Normality happens immediately here: the sample mean is already normally distributed with a sample size of one, so \(n=30\) is not the point at which it becomes normal.**
+
+## What surprised me
+
+I expected the skewness and kurtosis to sit closer to 0 as the sample size grew, and they do not. The excess kurtosis at sample size 1 is `r round(results$excess_kurtosis[results$sample_size == 1], 3)`. At sample size 80 it is `r round(results$excess_kurtosis[results$sample_size == 80], 3)`, and at sample size 100 it is `r round(results$excess_kurtosis[results$sample_size == 100], 3)`, against `r round(results$excess_kurtosis[results$sample_size == 5], 3)` at sample size 5. The skewness at sample size 100 is `r round(results$skewness[results$sample_size == 100], 3)`, against `r round(results$skewness[results$sample_size == 1], 3)` at sample size 1.
+
+That wobble is noise in the estimate. After the means are standardized, every row is an estimate of the same normal shape, and that noise depends on the `r B` repetitions, not on n. A skewness gap of about 0.04 is one or two of those noise units, so the table cannot say that n = 100 is less normal than n = 5. Ten thousand repetitions are enough to check the mean and the standard error. At n = 5 the uncertainty in the average of the simulated means is about `r round(results$simulated_se[results$sample_size == 5] / sqrt(B), 4)`, and the simulated mean of `r round(results$simulated_mean[results$sample_size == 5], 3)` is about one of those units away from 0. They are not enough to interpret the third decimal of skewness. With only one seed, the kurtosis of `r round(results$excess_kurtosis[results$sample_size == 80], 3)` at n = 80 would move if I reran the experiment, though it would not move far enough to cross the 0.50 cutoff. The Yes column is stable. The exact kurtosis is not.
+
+## Reproducibility experiment
+
+The table above uses seed `r student_id`. This section repeats the same sample sizes and the same 10,000 repetitions with a different seed, `r student_id + 1`, which is my student ID plus one. I ran it after that table was finished, so those rows do not change. The reported answer still comes from seed `r student_id`. This rerun checks whether the conclusion holds up, and I did not use it to pick a sample size.
+
+```{r}
+repro_seed <- student_id + 1
+set.seed(repro_seed)
+
+repro <- data.frame()
+for (n in sample_sizes) {
+  sample_means <- replicate(B, mean(rnorm(n, mean = mu, sd = sigma)))
+  simulated_se <- sd(sample_means)
+  theoretical_se <- sigma / sqrt(n)
+  sk <- skewness(sample_means)
+  ek <- excess_kurtosis(sample_means)
+  ratio <- simulated_se / theoretical_se
+  repro <- rbind(
+    repro,
+    data.frame(
+      sample_size = n,
+      simulated_mean = mean(sample_means),
+      se_ratio = ratio,
+      skewness = sk,
+      excess_kurtosis = ek,
+      meets_rule = abs(sk) < 0.25 &
+        abs(ek) < 0.50 &
+        abs(ratio - 1) <= 0.10
+    )
+  )
+}
+
+same_rule <- all(repro$meets_rule == results$meets_rule)
+max_mean_gap <- max(abs(repro$simulated_mean - results$simulated_mean))
+max_skew_gap <- max(abs(repro$skewness - results$skewness))
+```
+
+```{r}
+#| echo: false
+repro_view <- data.frame(
+  sample_size = results$sample_size,
+  mean_1069 = results$simulated_mean,
+  mean_check = repro$simulated_mean,
+  skew_1069 = results$skewness,
+  skew_check = repro$skewness,
+  rule_1069 = ifelse(results$meets_rule, "Yes", "No"),
+  rule_check = ifelse(repro$meets_rule, "Yes", "No")
+)
+names(repro_view) <- c(
+  "Sample size",
+  paste0("Mean, seed ", student_id),
+  paste0("Mean, seed ", repro_seed),
+  paste0("Skewness, seed ", student_id),
+  paste0("Skewness, seed ", repro_seed),
+  paste0("Rule, seed ", student_id),
+  paste0("Rule, seed ", repro_seed)
+)
+kable(
+  repro_view,
+  digits = 3,
+  row.names = FALSE,
+  caption = "The same normal experiment, run again with seed 1070. Seed 1069 is the analysis. Seed 1070 is the reproducibility check."
+)
+```
+
+The exact results changed. The simulated means differ by as much as `r round(max_mean_gap, 3)`, and the skewness values differ by as much as `r round(max_skew_gap, 3)`. Those gaps are the ordinary noise in an average of 10,000 means. Rendering the file again with seed `r student_id` would print the first table again. Seed `r repro_seed` is a different sample, so the third decimal moves.
+
+The scientific conclusion did not change. `r if (same_rule && all(repro$meets_rule)) "Every sample size meets the rule on both seeds, including sample size 1." else "The Yes column is not identical on the two seeds."` There is still no transition. Sample size 1 is still the smallest value tested, and it still passes, while sample size 30 is still not a special point.
+
+A Monte Carlo result is reproducible when the code, the number of repetitions, and the seed are fixed. Someone who renders this file gets the seed-`r student_id` table. A different seed can change the exact estimates, because those estimates are themselves random, and I did not use the second seed to shop for a nicer answer. For this population the estimates sit far inside the cutoffs, so the Yes column stays put while the third decimal of skewness moves.

@@ -1,0 +1,354 @@
+---
+title: "Age at death"
+subtitle: "Extra credit: a two-component distribution"
+format:
+  html:
+    embed-resources: true
+    toc: true
+    code-fold: true
+    theme: cosmo
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+```{r}
+#| include: false
+library(ggplot2)
+library(knitr)
+student_id <- 1069
+```
+
+For my last extra-credit population, I created a custom age-at-death distribution using whole-number ages from 0 to 100. It combines two patterns: deaths are more common near age zero, and there is another larger cluster around age 65. I created this distribution to make the simulation more interesting, so it is not meant to represent real mortality data.
+
+The ages are still independent, and they still come from one distribution. What is unusual is the shape. I wanted the smallest sample size where the sampling distribution of the mean is approximately normal, and I wanted to know whether 30 is enough.
+
+## The population
+
+The possible ages are the integers from 0 through 100. The two pieces below are weights, not probabilities, until they are divided by their total.
+
+```{r}
+age <- 0:100
+
+early_component <- 0.045 * exp(-age / 5)
+
+adult_component <- 0.030 *
+  exp(-0.5 * ((age - 65) / 10)^2)
+
+weight <- early_component + adult_component
+probability <- weight / sum(weight)
+percent <- 100 * probability
+
+death_distribution <- data.frame(
+  age = age,
+  probability = probability,
+  percent = percent
+)
+
+population_mean <- sum(death_distribution$age * death_distribution$probability)
+population_variance <- sum(
+  (death_distribution$age - population_mean)^2 * death_distribution$probability
+)
+population_sd <- sqrt(population_variance)
+pop_skew <- sum(
+  (death_distribution$age - population_mean)^3 * death_distribution$probability
+) / population_sd^3
+
+rdeath <- function(n) {
+  sample(
+    x = death_distribution$age,
+    size = n,
+    replace = TRUE,
+    prob = death_distribution$probability
+  )
+}
+
+sum(probability)
+round(population_mean, 2)
+round(population_sd, 2)
+round(pop_skew, 3)
+```
+
+The probabilities sum to 1. The mean age is about 49.98 years, and the standard deviation is about 27.63. The skewness is about $-0.862$: the early-death piece pulls a left tail off the adult bell. The curve below is that population, not a sampling distribution.
+
+```{r}
+#| echo: false
+#| fig-width: 6.5
+#| fig-height: 3.2
+#| fig-cap: "Custom age-at-death distribution. The curve falls quickly after age zero, then rises again near age 65."
+plot(
+  death_distribution$age,
+  death_distribution$percent,
+  type = "l",
+  col = "darkorange",
+  lwd = 3,
+  ylim = c(0, 4.5),
+  xlab = "Age at death",
+  ylab = "Percent of deaths",
+  main = "Custom age-at-death distribution"
+)
+```
+
+```{r}
+#| echo: false
+#| fig-width: 6.5
+#| fig-height: 3.2
+#| fig-cap: "Ten thousand individual ages drawn with rdeath(). This is the population, not a sampling distribution."
+set.seed(student_id)
+simulated_ages <- rdeath(10000)
+hist(
+  simulated_ages,
+  breaks = 20,
+  col = "#9ecae1",
+  border = "white",
+  xlab = "Age at death",
+  main = "Ten thousand individual ages",
+  freq = FALSE
+)
+```
+
+R does not have a built-in generator for this distribution, so `rdeath()` samples from the age list with `replace = TRUE` and the probabilities above. One call returns one sample of ages. Below I printed five ages and their average, which is one number from one sample. The sampling distribution is the pile of averages I get later, when I repeat the sample 10,000 times.
+
+```{r}
+set.seed(student_id)
+one_sample <- rdeath(5)
+one_sample
+mean(one_sample)
+```
+
+The sample mean of $n$ independent draws has mean about 49.98 and standard error $27.63/\sqrt{n}$. Its skewness is the population skewness divided by $\sqrt{n}$. That drops under 0.25 in absolute value at sample size 12. At sample size 11 the formula is still just over the line.
+
+## What I expected
+
+Before looking at the simulation, the prediction was:
+
+- The simulated mean should stay near 49.98, and the standard-error ratio should sit near 1. The variance is finite, and the observations are independent.
+- The left skew should still be visible at the small sample sizes. At sample size 30 the formula is about $-0.16$, under the 0.25 cutoff, so 30 can pass.
+- The formula first allows a pass at sample size 12. A simulated skewness under 0.25 should not count at 11, where the formula is still over the line.
+- Near 12 the formula is only barely under 0.25, and a skewness estimate from 10,000 means wobbles by about 0.025. The first Yes may not be a size that stays Yes.
+- One age stays on the custom curve. Averaging is what changes the sampling distribution.
+
+## How the experiment was run
+
+The sample size, $n$, is how many ages are averaged to make one sample mean. The number of repetitions, $B = 10000$, is how many of those means were saved. The sample size is never 10,000. Each mean is `mean(rdeath(n))`, repeated 10,000 times.
+
+The sample sizes are 5, 10, every integer from 11 through 25, then 30, 40, 50, and 100. The integers from 11 through 25 are the search around the predicted change. Sample size 30 is the rule of thumb this project is testing.
+
+A sample size counts as normal enough when four things are all true: the absolute skewness of the 10,000 sample means is under 0.25, the theoretical skewness is also under 0.25, the absolute excess kurtosis is under 0.50, and the simulated standard error is within 10% of $27.63/\sqrt{n}$.
+
+The random seed is the last four digits of the student ID, set once, immediately before the draws.
+
+```{r}
+student_id <- 1069
+B <- 10000
+sample_sizes <- c(5, 10, 11:25, 30, 40, 50, 100)
+
+skewness <- function(x) {
+  z <- (x - mean(x)) / sd(x)
+  mean(z^3)
+}
+
+excess_kurtosis <- function(x) {
+  z <- (x - mean(x)) / sd(x)
+  mean(z^4) - 3
+}
+
+qq_scaled_rmse <- function(x) {
+  x <- sort(x)
+  theo <- qnorm(ppoints(length(x)))
+  qs <- as.numeric(quantile(x, c(0.25, 0.75)))
+  tqs <- qnorm(c(0.25, 0.75))
+  slope <- diff(qs) / diff(tqs)
+  intercept <- qs[1] - slope * tqs[1]
+  fitted <- intercept + slope * theo
+  sqrt(mean((x - fitted)^2)) / sd(x)
+}
+
+set.seed(student_id)
+
+results <- data.frame()
+stored_means <- list()
+
+for (n in sample_sizes) {
+  sample_means <- replicate(B, mean(rdeath(n)))
+  simulated_se <- sd(sample_means)
+  theoretical_se <- population_sd / sqrt(n)
+
+  results <- rbind(
+    results,
+    data.frame(
+      sample_size = n,
+      simulated_mean = mean(sample_means),
+      theoretical_mean = population_mean,
+      simulated_se = simulated_se,
+      theoretical_se = theoretical_se,
+      se_ratio = simulated_se / theoretical_se,
+      skewness = skewness(sample_means),
+      theory_skewness = pop_skew / sqrt(n),
+      excess_kurtosis = excess_kurtosis(sample_means),
+      qq_discrepancy = qq_scaled_rmse(sample_means)
+    )
+  )
+
+  stored_means[[as.character(n)]] <- sample_means
+}
+
+results$meets_rule <- with(
+  results,
+  abs(skewness) < 0.25 &
+    abs(theory_skewness) < 0.25 &
+    abs(excess_kurtosis) < 0.50 &
+    abs(se_ratio - 1) <= 0.10
+)
+
+first_passing_n <- min(results$sample_size[results$meets_rule])
+holds_n <- NA_integer_
+for (i in seq_len(nrow(results))) {
+  if (all(results$meets_rule[i:nrow(results)])) {
+    holds_n <- results$sample_size[i]
+    break
+  }
+}
+late_failures <- results$sample_size[
+  results$sample_size > first_passing_n & !results$meets_rule
+]
+focus_n <- c(5, holds_n, 30)
+```
+
+## What the numbers say
+
+```{r}
+#| echo: false
+results_view <- results
+names(results_view) <- c(
+  "Sample size", "Simulated mean", "Theoretical mean",
+  "Simulated SE", "Theoretical SE", "SE ratio",
+  "Skewness", "Theory skewness", "Excess kurtosis",
+  "QQ discrepancy", "Meets the rule?"
+)
+results_view$`Meets the rule?` <- ifelse(results$meets_rule, "Yes", "No")
+kable(
+  results_view,
+  digits = 3,
+  row.names = FALSE,
+  caption = "Ten thousand sample means from the custom age distribution. The theoretical mean is about 49.98. The theoretical skewness is the population skewness divided by the square root of n."
+)
+```
+
+The center stays near 49.98. The simulated means run from `r round(min(results$simulated_mean), 2)` to `r round(max(results$simulated_mean), 2)`.
+
+The width matches the formula immediately. At sample size 5 the standard-error ratio is `r round(results$se_ratio[results$sample_size == 5], 3)`. Across the table it stays between `r round(min(results$se_ratio), 3)` and `r round(max(results$se_ratio), 3)`. A correct standard error is not evidence that the shape is normal.
+
+Skewness is the column that makes the decision. The formula drops under 0.25 in absolute value at sample size 12: it is `r round(results$theory_skewness[results$sample_size == 11], 3)` at sample size 11 and `r round(results$theory_skewness[results$sample_size == 12], 3)` at sample size 12. The first Yes on this seed is sample size `r first_passing_n`. After that, sample sizes `r paste(late_failures, collapse = ", ")` fail. The smallest tested size after which every larger tested row passes is `r holds_n`.
+
+Excess kurtosis is not what holds the decision. It is already under 0.50 at sample size 5, where the simulated value is `r round(results$excess_kurtosis[results$sample_size == 5], 3)`. The left skew is what lasts.
+
+## What the pictures say
+
+The panels are sample size 5, the first size that keeps passing, and sample size 30. The red curve is the normal approximation with the theoretical mean and standard error.
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.4
+#| fig-cap: "Sampling distributions of the age-at-death mean. The red curve is the normal approximation."
+plot_means <- do.call(rbind, lapply(focus_n, function(n) {
+  data.frame(n = n, sample_mean = stored_means[[as.character(n)]])
+}))
+plot_means$panel <- factor(
+  paste0("n = ", plot_means$n),
+  levels = paste0("n = ", focus_n)
+)
+curve_df <- do.call(rbind, lapply(focus_n, function(n) {
+  se <- population_sd / sqrt(n)
+  xs <- seq(max(0, population_mean - 4 * se), population_mean + 4 * se, length.out = 300)
+  data.frame(
+    panel = factor(paste0("n = ", n), levels = levels(plot_means$panel)),
+    x = xs,
+    y = dnorm(xs, mean = population_mean, sd = se)
+  )
+}))
+ggplot(plot_means, aes(sample_mean)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 40, fill = "#9ecae1", linewidth = 0) +
+  geom_line(data = curve_df, aes(x, y), color = "#e31a1c", linewidth = 0.8) +
+  facet_wrap(~panel, nrow = 1, scales = "free") +
+  labs(x = "Sample mean", y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+At sample size 5 the left tail is longer than the red curve. The later panels sit closer. Each panel has its own horizontal scale, so this picture is about shape. The next figure uses one scale, from 0 to 100, which is the range of a single age.
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.4
+#| fig-cap: "The same age means on one horizontal scale, from 0 to 100. Larger samples pull the mean in toward 50. One age does not."
+ggplot(plot_means, aes(sample_mean)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 40, fill = "#9ecae1", linewidth = 0) +
+  geom_line(data = curve_df, aes(x, y), color = "#e31a1c", linewidth = 0.8) +
+  facet_wrap(~panel, nrow = 1, scales = "free_y") +
+  coord_cartesian(xlim = c(0, 100)) +
+  labs(x = "Sample mean", y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3.4
+#| fig-cap: "Normal Q–Q plots of the age means. A bend at the left is the remaining skew. The red line is qqline()."
+par(mfrow = c(1, 3), mar = c(4, 4, 2.2, 1))
+for (n in focus_n) {
+  qqnorm(
+    stored_means[[as.character(n)]],
+    main = paste0("n = ", n),
+    pch = 16,
+    cex = 0.3,
+    col = "#08519c"
+  )
+  qqline(stored_means[[as.character(n)]], col = "#e31a1c", lwd = 2)
+}
+```
+
+The Q–Q discrepancy at sample size 5 is `r round(results$qq_discrepancy[results$sample_size == 5], 3)`, and at sample size `r holds_n` it is `r round(results$qq_discrepancy[results$sample_size == holds_n], 3)`. That number is supporting evidence. It is not a separate cutoff.
+
+```{r}
+#| results: hide
+shapiro_results <- do.call(rbind, lapply(focus_n, function(n) {
+  set.seed(student_id)
+  fit <- shapiro.test(sample(stored_means[[as.character(n)]], 5000))
+  data.frame(sample_size = n, W = unname(fit$statistic), p_value = fit$p.value)
+}))
+```
+
+```{r}
+#| echo: false
+shapiro_view <- shapiro_results
+shapiro_view$p_value <- format.pval(shapiro_results$p_value, digits = 3, eps = 0.001)
+names(shapiro_view) <- c("Sample size", "W", "p-value")
+kable(
+  shapiro_view,
+  digits = 3,
+  row.names = FALSE,
+  caption = "Shapiro–Wilk tests on 5,000 of the 10,000 age means. The ages are whole numbers, so this test is not the cutoff."
+)
+```
+
+## Conclusion
+
+The formula first drops under 0.25 in absolute value at sample size 12. The first Yes is sample size `r first_passing_n`. Sample size `r paste(late_failures, collapse = ", ")` fails after that. A first Yes that is followed by a No is not the smallest size that holds.
+
+The smallest size after which every larger row in this table passes is `r holds_n`. At that size the skewness is `r round(results$skewness[results$sample_size == holds_n], 3)`, the theoretical skewness is `r round(results$theory_skewness[results$sample_size == holds_n], 3)`, the excess kurtosis is `r round(results$excess_kurtosis[results$sample_size == holds_n], 3)`, and the standard-error ratio is `r round(results$se_ratio[results$sample_size == holds_n], 3)`.
+
+Sample size 30 is enough for this distribution. The skewness there is `r round(results$skewness[results$sample_size == 30], 3)`, and the formula is `r round(results$theory_skewness[results$sample_size == 30], 3)`. The standard-error ratio is `r round(results$se_ratio[results$sample_size == 30], 3)`. Thirty is not the first size that holds.
+
+Selecting `r holds_n` describes the tested rows. It is not a proof that every larger sample size passes. The population did not become a bell. One age is still a draw from the two-part curve. The sampling distribution changed because each mean mixes more ages. The only seed in this file is the student ID, `r student_id`.
+
+**For this custom age-at-death population, the sample mean is approximately normal by \(n=30\). The original age distribution stays irregular, but averaging 30 independent ages smooths the sample means enough to meet my rule.**
+
+## What surprised me
+
+The population curve has two pieces, and I expected that shape to keep the sample mean irregular past 30. It does not. The standard error is already right at sample size 5, ratio `r round(results$se_ratio[results$sample_size == 5], 3)`, while the skewness is still `r round(results$skewness[results$sample_size == 5], 3)`. The two pieces are a fact about one age. They are not a fact about the average of many ages.
+
+The Yes column also does not stay Yes once it starts. This seed passes at `r first_passing_n` and then fails at sample size `r paste(late_failures, collapse = ", ")`. With `r B` repetitions, the skewness estimate moves by about `r round(sqrt(6 / B), 3)`. Around the cutoff that wobble is large enough to turn one row from Yes to No.
