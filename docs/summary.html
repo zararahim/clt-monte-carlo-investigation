@@ -2346,7 +2346,7 @@ window.Quarto = {
     <h2 id="toc-title">Table of contents</h2>
    
   <ul>
-  <li><a href="#words-used-in-the-tables" id="toc-words-used-in-the-tables" class="nav-link active" data-scroll-target="#words-used-in-the-tables">Words used in the tables</a></li>
+  <li><a href="#some-definitions-to-know" id="toc-some-definitions-to-know" class="nav-link active" data-scroll-target="#some-definitions-to-know">Some definitions to know</a></li>
   <li><a href="#how-i-ran-the-simulations" id="toc-how-i-ran-the-simulations" class="nav-link" data-scroll-target="#how-i-ran-the-simulations">How I ran the simulations</a></li>
   <li><a href="#what-approximately-normal-means-here" id="toc-what-approximately-normal-means-here" class="nav-link" data-scroll-target="#what-approximately-normal-means-here">What “approximately normal” means here</a></li>
   <li><a href="#the-answers" id="toc-the-answers" class="nav-link" data-scroll-target="#the-answers">The answers</a></li>
@@ -2381,11 +2381,10 @@ window.Quarto = {
 
 
 <p>The Central Limit Theorem states that the sampling distribution of the sample mean becomes approximately normal as the sample size increases. A common textbook rule of thumb is that this occurs once <span class="math inline">\(n = 30\)</span>. The purpose of this project is to determine whether 30 is a universal threshold, or whether the required sample size depends on the population from which the observations are drawn.</p>
-<p>For each population, I identified the smallest sample size at which the sampling distribution of the mean is approximately normal. I did not require the populations to share one answer. For the Cauchy distribution, I also allowed the conclusion that no finite sample size is sufficient.</p>
+<p>For each population, I identified the smallest sample size at which the sampling distribution of the mean is approximately normal. The populations did not share the same answer.</p>
 <p>I studied five required populations: a standard normal distribution, a fair six-sided die, an exponential distribution with rate 1, a binomial distribution with 5 trials and success probability 0.10, and a Cauchy distribution with location 0 and scale 1. I also studied three extra-credit populations. In the Bernoulli case, the trials are independent, but the success probability decreases from 0.90 to 0.50, so the trials are not identically distributed. In the machine-failure case, the baseline rate is 1 and the next rate is <span class="math inline">\(\lambda_t = e^{1.25(X_{t-1}-1)}\)</span>, so successive observations are dependent. In the age-at-death case, the population is a discrete distribution on the ages 0 through 100, with an early-death component that declines quickly and an adult component centered at age 65. Each population is reported in its own file. This file compares the results. The histograms, the Q–Q plots, and the full tables are in those reports, and the list of files is in <code>README.md</code>.</p>
-<section id="words-used-in-the-tables" class="level2">
-<h2 class="anchored" data-anchor-id="words-used-in-the-tables">Words used in the tables</h2>
-<p>The definitions below are the ones I use when I describe a sample size as close enough to normal.</p>
+<section id="some-definitions-to-know" class="level2">
+<h2 class="anchored" data-anchor-id="some-definitions-to-know">Some definitions to know</h2>
 <p><strong>Population.</strong> The population is the distribution of a single observation, before any averaging. One roll of the die is one draw from that population, and one exponential waiting time is one draw from that population.</p>
 <p><strong>Sample size, <span class="math inline">\(n\)</span>.</strong> The sample size is the number of observations that are averaged to produce one sample mean. This is the quantity the project varies. The sample size is never 10,000.</p>
 <p><strong>The 10,000 repetitions.</strong> For each sample size, I calculated the sample mean 10,000 times. The collection of those means is the sampling distribution of the sample mean. One sample produces one mean. The sampling distribution describes the variation among many means.</p>
