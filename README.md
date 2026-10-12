@@ -31,6 +31,21 @@ The main question throughout the project is:
 
 > What is the smallest sample size at which the sampling distribution of the sample mean is approximately normal, and is \(n=30\) enough?
 
+## What counts as close enough to normal
+
+For a population with a finite variance, a sample size counts as close enough to normal only when all four of these are true:
+
+1. The absolute skewness of the 10,000 sample means is under 0.25.
+2. The absolute excess kurtosis of those means is under 0.50. Excess kurtosis is the fourth moment minus 3, so a normal distribution is 0.
+3. The simulated standard error is within 10% of the theoretical standard error. Where the observations are independent and a variance exists, that standard error is σ/√n.
+4. When a formula for the skewness of the mean exists, that formula is also under 0.25 in absolute value. A simulated skewness under 0.25 does not pass while the formula is still over it.
+
+The reported sample size is the smallest tested size after which every larger tested row passes. An isolated pass does not count if a later tested row fails.
+
+Histograms and Q–Q plots are evidence alongside these numbers. They are not a separate cutoff.
+
+But, there are two populations that do not fit this rule entirely. The Cauchy distribution has no finite variance, so the four conditions are not available. That report uses the median, the interquartile range, and the share of means outside −10 to 10, and the answer is that no finite sample size was found. The machine-failure times are dependent, so there is no σ/√n. That report still requires the skewness and excess kurtosis cutoffs, and it does not use the comparison with 1/√n as a pass or a fail.
+
 ## Required populations
 
 | Population | Report |
